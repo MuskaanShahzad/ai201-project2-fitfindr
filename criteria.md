@@ -25,9 +25,14 @@ Given a query that matches at least one listing, the agent completes all three
 tool calls and returns a fit card — in at least 4 of 5 tries.
 
 **Why this target:**
-<!-- Why 4 of 5 and not 5 of 5? Something about your search, probably —
-     "my search is a plain keyword match and some phrasings will miss" is a
-     real answer. -->
+`search_listings` scores by keyword overlap with the description and drops
+anything scoring zero — it isn't a semantic match. A query can describe a
+listing a person would call a match without sharing a single word with that
+listing's title, description, or style tags (e.g. "throwback track jacket"
+vs. a listing titled "90s Track Jacket" tagged `90s`, `vintage`, `athletic`,
+`streetwear` — no shared token). That's a real miss mode built into a plain
+keyword matcher, not something the loop can paper over, so 4 of 5 is honest
+about it rather than pretending it won't happen.
 
 ---
 
@@ -37,66 +42,59 @@ Given a query that matches no listings, the agent stops before calling
 `suggest_outfit` and returns a message naming what to change — 5 of 5 tries.
 
 **Why this target:**
-<!-- Why is 5 of 5 reasonable here when criterion 1 isn't? What's different
-     about this path? -->
+This branch is a plain `if not search_results` check on whatever
+`search_listings` already returned — Python truthiness, not another round of
+keyword scoring. Nothing about phrasing matters once the result list is
+already empty, so there's no variability left for a miss to hide in, unlike
+criterion 1, where the match step itself is the thing that can go either way.
 
 ---
 
-## 3. Something about state
+## 3. The selected item stays the same item across tool calls
 
-<!-- YOU WRITE THIS ONE.
-
-     How would you know that the item your search found is the same item the
-     next tool received? Name something countable or observable.
-
-     This is the criterion people find hardest, because state failure doesn't
-     look like state failure — it looks like a tool problem. Something that
-     compares session["selected_item"] against what actually reached
-     suggest_outfit is the shape you're after. -->
-
-
+For 5 different matching queries, `session["selected_item"]["id"]` equals the
+`id` of `session["search_results"][0]`, and that same `id` is present in the
+`new_item` dict passed into both `suggest_outfit` and `create_fit_card` — in
+5 of 5 tries.
 
 **Why this target:**
-
-
+`selected_item` is a plain assignment — `session["search_results"][0]` copied
+into `session["selected_item"]` — not a model call and not anything that
+depends on phrasing or luck. If the id ever drifts between what search found
+and what the later tools received, that's not noise, it's a bug in the loop
+itself, so 5 of 5 is the only target that makes sense here.
 
 ---
 
-## 4. Something about the fit card
+## 4. The fit card stays inside its format rules
 
-<!-- YOU WRITE THIS ONE.
-
-     The fit card calls a model, so the same input can produce different words
-     each time. That's not a bug — it's the nature of the tool. So what would
-     make it acceptable?
-
-     Think about what you'd actually be unhappy to see. A caption that never
-     mentions the price? Two different items producing the same opening
-     sentence? A card longer than a caption anyone would post? Any of those can
-     be turned into a number. -->
-
-
+For 5 different items, a fit card counts as a pass only if it is 2-4
+sentences, mentions the item's price and its platform at least once each, and
+is not word-for-word identical to any of the other cards — in 4 of 5 tries.
 
 **Why this target:**
-
-
+`create_fit_card` calls the model, so it can skip part of an instruction the
+same way a plain keyword matcher can miss a phrasing in criterion 1 — a flat
+5 of 5 would be pretending the model never drifts from format. I'm not
+worried the cards will actually come out identical (that would mean
+`CACHE_ENABLED` or `TEMPERATURE` is misconfigured, not normal variance), but
+I'm folding that check in here anyway rather than giving it its own number,
+since it's still just one more way a single card can fail.
 
 ---
 
-## 5. Your choice
+## 5. search_listings never returns a listing over the price ceiling
 
-<!-- YOU WRITE THIS ONE TOO.
-
-     Pick something you actually care about getting right. Speed, the empty
-     wardrobe path, what happens when the model can't be reached, whether the
-     search respects a price ceiling — anything, as long as it names a number
-     or an observable outcome. -->
-
-
+For 5 queries that each specify a `max_price`, every listing in
+`search_results` has `price <= max_price` — in 5 of 5 tries.
 
 **Why this target:**
-
-
+`max_price` is an inclusive numeric filter applied before anything else in
+`search_listings` — it's a `<=` comparison on a float, not a keyword score or
+a model guess, so there's no legitimate reason a listing over the ceiling
+should ever come back. Same reasoning as criterion 3: this is a deterministic
+code path, not a model call, so anything less than 5 of 5 would mean the
+filter itself is broken, not that the result naturally varies run to run.
 
 ---
 
