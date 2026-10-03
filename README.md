@@ -97,17 +97,58 @@ $ python app.py ask '...'
 
 ```
 $ python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
-
+[{'id': 'lst_002', 'title': 'Y2K Baby Tee — Butterfly Print', 'price': 18.0, ...},
+ {'id': 'lst_006', 'title': 'Graphic Tee — 2003 Tour Bootleg Style', 'price': 24.0, ...},
+ {'id': 'lst_017', 'title': 'Mesh Long-Sleeve Top — Black', 'price': 15.0, ...},
+ {'id': 'lst_033', 'title': 'Vintage Band Tee — Faded Grey', 'price': 19.0, ...},
+ {'id': 'lst_011', 'title': 'Low-Rise Cargo Pants — Khaki', 'price': 27.0, ...},
+ {'id': 'lst_015', 'title': 'Vintage Graphic Hoodie — Faded Black', 'price': 26.0, ...}]
 ```
 
 ```
-$ python -c "from tools import suggest_outfit; ..."
-
+$ python -c "from tools import suggest_outfit; from utils.data_loader import get_example_wardrobe, load_listings; print(suggest_outfit(load_listings()[0], get_example_wardrobe()))"
+Pair the vintage Levi's 501s with the white ribbed tank top, layered under the oversized grey crewneck sweatshirt and finished with chunky white sneakers. Alternatively, tuck the white ribbed tank into the jeans, cinch it with the brown leather belt, and top it off with the vintage black denim jacket and black combat boots.
 ```
 
 ```
-$ python -c "from tools import create_fit_card; ..."
+$ python -c "from tools import create_fit_card; from utils.data_loader import load_listings; print(create_fit_card('jeans and white sneakers', load_listings()[0]))"
+Finally found the holy grail of vintage Levi's 501s and my life is officially complete. Grabbed these for $38 over on Depop and they fit like an absolute dream. Just need to throw on my beat-up white sneakers and I'm ready for the ultimate lazy-cool weekend fit.
+```
 
+**`create_fit_card`, run 3x on the same item (checking for the identical-output bug)**
+
+```
+$ python -c "
+from tools import create_fit_card
+from utils.data_loader import load_listings
+item = load_listings()[0]
+for i in range(3):
+    print(f'--- run {i+1} ---')
+    print(create_fit_card('jeans and white sneakers', item))
+"
+--- run 1 ---
+The search for the perfect vintage wash is officially over. Scored these broken-in 501s for just $38 over on depop and I'm never taking them off. Throwing these on with a crisp white tee and beat-up sneakers for the ultimate off-duty model vibe.
+--- run 2 ---
+Found the holy grail of denim today. These vintage 501s in the perfect medium wash are giving the ultimate 90s off-duty model vibe. Just grabbed them on Depop for $38 and honestly, I'll probably live in these with my beat-up white sneakers all fall.
+--- run 3 ---
+Finally found my holy grail vintage 501s and I'm literally never taking them off. Scored this medium wash perfection for just $38 on Depop. Just need to style them with my beat-up white sneakers and the effortless 90s fit is complete.
+```
+
+All three are different — not a `CACHE_ENABLED`/`TEMPERATURE` bug.
+
+**Empty-case checks, all three tools**
+
+```
+$ python -c "
+from tools import search_listings, suggest_outfit, create_fit_card
+from utils.data_loader import get_empty_wardrobe, load_listings
+print('empty search:', search_listings('designer ballgown', size='XXS', max_price=5))
+print('empty wardrobe:', suggest_outfit(load_listings()[0], get_empty_wardrobe()))
+print('empty outfit:', create_fit_card('', load_listings()[0]))
+"
+empty search: []
+empty wardrobe: Pair these medium-wash 501s with a cropped white baby tee and chunky black loafers for an effortless, classic streetwear look. Alternatively, layer an oversized forest green or heather gray crewneck sweatshirt over a tucked-in vintage graphic tee.
+empty outfit: Can't write a caption without an outfit suggestion.
 ```
 
 ---
