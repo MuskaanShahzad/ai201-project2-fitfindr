@@ -73,9 +73,9 @@
 
 **Where it lives:** `agent.py::run_agent`
 
-**How the query is parsed:** <!-- regex, string splitting, or asking the model — say which -->
+**How the query is parsed:** Regex, in `agent.py::parse_query`. One pattern pulls a price ceiling out of `"under $N"`, another pulls a size out of `"size X"`; whatever text is left over (with those matched pieces and filler words like "in"/"under" stripped out) becomes the search description.
 
-**What moves through the session:** <!-- which fields, in what order -->
+**What moves through the session:** `query` → `parsed` (`description`, `size`, `max_price` from `parse_query`) → `search_results` (from `search_listings`) → `selected_item` (`search_results[0]`) → `outfit_suggestion` (from `suggest_outfit`, given `selected_item` and `wardrobe`) → `fit_card` (from `create_fit_card`, given `outfit_suggestion` and `selected_item`). If `search_results` comes back empty, `error` is set and the session returns right there — `selected_item`, `outfit_suggestion`, and `fit_card` stay `None`.
 
 ---
 
@@ -89,8 +89,23 @@
 **One full query**
 
 ```
-$ python app.py ask '...'
+$ python app.py ask 'vintage graphic tee under $30'
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
 
+  Outfit:   Pair the Y2K butterfly baby tee with your baggy dark wash straight-leg jeans and chunky white sneakers for an effortless casual look, layering the black cropped zip hoodie on top if it gets chilly. Alternatively, tuck the baby tee into your wide-leg khaki trousers and accessorize with the brown leather belt and black combat boots for a cool contrast of styles.
+
+  Fit card: Channeling all the early 2000s pop star energy with this butterfly baby tee. Got it on Depop for just $18 and I'm literally never taking it off. Pair it with baggy jeans and chunky sneakers for the ultimate off-duty look. ✨🦋
+
+0 model calls this session, 2 served from cache
+```
+
+**The impossible-query path**
+
+```
+$ python app.py ask 'designer ballgown size XXS under $5'
+  No listings matched. Try raising the price ceiling, dropping the size filter, or using different keywords.
+
+0 model calls this session
 ```
 
 **The three tools, tested one at a time**
