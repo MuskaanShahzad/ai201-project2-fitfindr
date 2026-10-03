@@ -24,23 +24,17 @@
 
 ## What This Does
 
-<!-- Three or four sentences: what a user asks for, and what they get back. -->
-
-
+FitFindr is a command-line thrifting agent. You tell it what you're looking
+for in plain language — `"vintage graphic tee under $30, size M"` — and it
+searches a mock listings dataset for the best match, asks a language model to
+suggest an outfit pairing the find with pieces from your wardrobe, and asks it
+again to write a short caption for the find like someone would actually post.
+If nothing in the listings matches, it says so and tells you what to change
+instead of guessing or crashing.
 
 ---
 
 ## Tool Inventory
-
-<!-- Four lines per tool. This is worth 2 points and it's the single most
-     common place students lose them.
-
-     "Returns a list" earns NOTHING. The description has to say what is IN
-     the list.
-
-     The empty case isn't optional either — it's the thing your loop branches
-     on, and if you don't decide it here you'll discover it as a crash in
-     Milestone 5. -->
 
 ### `search_listings`
 
@@ -80,11 +74,6 @@
 ---
 
 ## Sample Run
-
-<!-- Two things go here.
-
-     1. One FULL query and its output, pasted as text.
-     2. Your three per-tool terminal tests — the command and what it printed. -->
 
 **One full query**
 
@@ -170,24 +159,40 @@ empty outfit: Can't write a caption without an outfit suggestion.
 
 ## How I Used AI
 
-<!-- Two specific moments. What you asked, what came back, what you changed.
-
-     "I used Claude to help me code" is not enough.
-
-     "I gave Claude my search_listings spec. It returned None on no match
-     instead of an empty list, so I changed it" is the level we want. -->
-
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I was drafting criteria 3, 4, and 5 for `criteria.md`
+  with Claude and had it propose confidence targets for each one.
+- *What came back:* It proposed a flat 5 of 5 for criterion 4 (the fit card),
+  even though `create_fit_card` calls the model — the exact same reasoning it
+  had just used two sections earlier to justify a *looser* 4 of 5 on
+  criterion 1, which also calls the model. It had also left criterion 5 at
+  10 of 10.
+- *What I changed:* I caught that two criteria involving the same kind of
+  thing — a model call — were being held to different standards, and asked
+  directly whether 5/5 and 10/10 across the board was overconfident. We
+  reworked criterion 4 so the part a model can realistically get wrong
+  (sentence length, mentioning the price and platform) dropped to 4 of 5,
+  while the "no two cards identical" check — which only catches a config bug
+  (`CACHE_ENABLED` or `TEMPERATURE`), not normal model variation — stayed at
+  5 of 5. When the two-number version read as confusing, I had it fold both
+  checks into one criterion with a single target instead.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I had Claude write the size-matching rule for
+  `search_listings`, since the starter's own docstring warned that a naive
+  substring check would be buggy — `"s" in "us 9"` and `"l" in "xl"` are both
+  `True` in Python.
+- *What came back:* Claude pulled every distinct size string out of
+  `data/listings.json` first (`S`, `S/M`, `W30 L30`, `US 8.5`,
+  `XL (fits oversized)`, etc.), then proposed a rule: split each listing's
+  size field on `/` and whitespace, drop anything in parentheses, and match
+  only on exact token equality instead of substrings.
+- *What I changed:* Nothing in the rule itself — I verified it independently
+  once `tools.py` was built, by calling `_size_matches` directly on the exact
+  edge cases (`"M"` vs `"S/M"` → true, `"M"` vs `"US 9"` → false, `"XL"` vs
+  `"XL (fits oversized)"` → true) before trusting it in the real search flow.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
