@@ -194,9 +194,29 @@ empty outfit: Can't write a caption without an outfit suggestion.
   edge cases (`"M"` vs `"S/M"` → true, `"M"` vs `"US 9"` → false, `"XL"` vs
   `"XL (fits oversized)"` → true) before trusting it in the real search flow.
 
-<!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════ -->
+**Moment 3 — Unit 4, Milestone 4**
 
----
+- *What I asked for:* I handed Claude all five verdicts (all MET) and asked it to push back on each one as hard as it could instead of just agreeing with a clean result.
+- *What came back:* It didn't just restate the verdicts — it found two places
+  where "MET" was resting on weaker evidence than it looked. Criterion 3's
+  "same id across all three tool calls" claim was only checked by matching
+  *titles* in the saved run; the actual trace line for `create_fit_card` gets
+  cut off by `trace.py`'s 110-character limit before it ever reaches the
+  `item=` part, so that half of the claim had never really been measured.
+  Criterion 4's sentence count had been done by eye and come out suspiciously
+  clean (3 sentences, every card) — Claude checked it with a script instead,
+  which caught a bug in itself on the first try (a guard meant to protect
+  against misreading "$18." as a sentence break also blocked a real break
+  after "$30!", undercounting one card).
+- *What I changed:* I had it close both gaps with real evidence rather than
+  just argument — re-running criterion 3 with `suggest_outfit`/
+  `create_fit_card` stubbed out to capture the literal `.id` passed at each
+  call site, and fixing the regex before trusting criterion 4's count. The
+  criterion-3 gap is also what Milestone 5's one improvement fixed directly in
+  `agent.py`, so the trace itself shows the id now instead of needing a
+  stand-in script.
+
+<!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════ -->
 
 ## Run Log — Before
 
@@ -408,8 +428,14 @@ It did **not** change any PASS/FAIL outcome, and it couldn't have — the change
 
 ## What's Still Broken
 
-<!-- For each criterion still missed: what you'd do, and why you stopped where
-     you did. "I ran out of time" is fine if it's true. Pretending nothing is
-     left is not. -->
+No criterion came back MISSED, so there's nothing to name a step-and-mechanism fix for in the usual sense. But "nothing missed" isn't the same as "nothing left," and three real gaps turned up during diagnosis that I didn't close:
+
+- **Criterion 5's inclusive edge was never actually tested.** All 5 price-ceiling scenarios confirm "nothing exceeds the ceiling," but none of them happen to return a listing priced *exactly* at `max_price` (the closest is $45 against a $50 ceiling), so the inclusive side of `price <= max_price` has no direct test. What I'd do: add a 6th scenario built around a query where a real listing's price matches the ceiling exactly, so both directions of the comparison are covered. Why I stopped: the criterion as written only claims listings never exceed the ceiling, which the current evidence already proves — this is a coverage gap in the test, not in the code, and closing it wasn't urgent enough to spend this unit's one allowed change on.
+
+- **Criterion 1's written reason in `criteria.md` answers a different question than the one actually being tested.** It justifies the 4-of-5 target by pointing at `search_listings`'s keyword-matching risk, but that risk lives in the criterion's precondition ("given a query that *matches*"), not in what gets measured — what Milestone 3/5's tries actually exercise is whether `suggest_outfit`/`create_fit_card` complete under real service conditions. The number still looks right for that real risk; the explanation underneath it doesn't match it. What I'd do: rewrite the "why" to describe tool-call/service reliability instead of keyword matching. Why I stopped: this is a documentation mismatch, not a measurability problem, so it doesn't qualify as an earned revision under this unit's own rule (`criteria.md`'s revision rule is for a criterion that *can't be measured*, and this one measures fine) — and Milestone 5's one change went to the criterion-3 evidence gap instead, which was the one affecting an actual verdict.
+
+- **5 tries is a small sample for anything that depends on the model service, and two real outages already showed up in far fewer than 5x20 tries.** Across this unit's testing, the exact same `ModelUnavailable` path got triggered by a genuine, unplanned service failure twice — a `503 UNAVAILABLE` in Milestone 2, and a connection drop during Milestone 5's after-run — on top of the one I triggered on purpose with a bad key. That's a higher real failure rate showing up than 5 tries alone would reliably surface, which makes me *more* confident the 4-of-5 targets on criteria 1 and 4 are pointed at a real risk, but *less* confident that 5 tries is enough to say precisely how often it happens. What I'd do: rerun criteria 1 and 4 with `--tries 20` or more to get a tighter estimate of the real completion-failure rate. Why I stopped: that's a 4x-or-larger evaluation run against a rate-limited, paced API (`REQUESTS_PER_MINUTE = 15`), which didn't fit this unit's time budget — the two unplanned failures already give real, if informal, evidence that the targets aren't just comfortable guesses.
+
+Criteria 2 and 3 have no open question — both are deterministic/structural checks with full, consistent evidence across every try, and nothing about them depends on the model's mood.
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
