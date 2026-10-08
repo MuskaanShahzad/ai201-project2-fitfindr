@@ -276,19 +276,50 @@ that produced it:
 **Happy path**
 
 ```
+$ python app.py ask 'vintage graphic tee under $30' --trace
+[1] search_listings (via MCP)
+      in:  description='vintage graphic tee', size=None, max_price=30.0
+      out: 10 items: Y2K Baby Tee — Butterfly Print, Graphic Tee — 2003 Tour Bootleg Style, Vintage Band Tee — Faded Grey … +7 more
+[2] suggest_outfit
+      in:  new_item='Y2K Baby Tee — Butterfly Print', wardrobe_items=10
+      out: Pair the Y2K butterfly baby tee with your baggy dark wash straight-leg jeans and chunky white sneakers for an …
+[3] create_fit_card
+      in:  outfit='Pair the Y2K butterfly baby tee with your baggy dark wash straight-leg jeans and chunky white sneakers…
+      out: Channeling all the early 2000s pop star energy with this butterfly baby tee. Got it on Depop for just $18 and …
 
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+  Outfit:   Pair the Y2K butterfly baby tee with your baggy dark wash straight-leg jeans and chunky white sneakers for an effortless casual look, layering the black cropped zip hoodie on top if it gets chilly. Alternatively, tuck the baby tee into your wide-leg khaki trousers and accessorize with the brown leather belt and black combat boots for a cool contrast of styles.
+
+  Fit card: Channeling all the early 2000s pop star energy with this butterfly baby tee. Got it on Depop for just $18 and I'm literally never taking it off. Pair it with baggy jeans and chunky sneakers for the ultimate off-duty look. ✨🦋
+
+0 model calls this session, 2 served from cache
 ```
 
 **Empty search**
 
 ```
+$ python app.py ask 'designer ballgown size XXS under $5' --trace
+[1] search_listings (via MCP)
+      in:  description='designer ballgown', size='XXS', max_price=5.0
+      out: [] (empty)
+[2] branch
+      →    empty search results — stopping before suggest_outfit
 
+  No listings matched. Try raising the price ceiling, dropping the size filter, or using different keywords.
+
+0 model calls this session
 ```
 
-**On the MCP move:** <!-- what changed in your code, and whether anything
-behaved differently afterwards. If the rewire didn't work, say exactly where it
-broke — the error text and the last thing that worked. That earns the point in
-full. -->
+**On the MCP move:** `search_listings` is now called through `mcp_client.call_tool("search_listings", {...})` instead of being imported and called directly — `agent.py` no longer imports `search_listings` from `tools.py` at all. The return value didn't change: same list of listing dicts, same item picked first, same $18 Y2K Baby Tee for the same query before and after the move. The trace step is labeled `search_listings (via MCP)` so the seam is visible in the Loop Trace above, not just in the code.
+
+**Failure modes, triggered on purpose**
+
+- *Empty search* — `designer ballgown size XXS under $5` (data has no match). Agent stops and names what to change: *"No listings matched. Try raising the price ceiling, dropping the size filter, or using different keywords."* Trace shows the branch firing after `[1]`, before `suggest_outfit` ever runs.
+- *Empty wardrobe* — `python app.py ask 'vintage graphic tee under $30' --empty-wardrobe`. `suggest_outfit` got `wardrobe_items=0` and returned general styling advice instead of wardrobe-specific pairings — a real, non-empty string, not a crash: *"Pair this Y2K butterfly baby tee with low-rise baggy cargo pants and chunky platform sneakers to lean into the nostalgic 2000s aesthetic...."*
+- *Model unavailable* — changed the last character of `GEMINI_API_KEY` in `.env`, then ran a query I hadn't asked before (`retro bowling shirt under $25`) so the cache couldn't mask it. `suggest_outfit` raised `ModelUnavailable`, caught in `run_agent()`, which set `session["error"]` and returned before `create_fit_card` ran: *"The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com."* Key restored immediately after.
+
+  One honest note: on the first two attempts at the empty-wardrobe run, the real model backend returned a transient `503 UNAVAILABLE` ("experiencing high demand") — not something I triggered. The same `ModelUnavailable` handler caught that too, with no crash, which is a second (unplanned) confirmation that the handler works for any reason the model can't be reached, not just a bad key.
 
 
 
