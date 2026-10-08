@@ -200,15 +200,6 @@ empty outfit: Can't write a caption without an outfit suggestion.
 
 ## Run Log — Before
 
-<!-- Five criteria, five tries each, in this exact format.
-
-     Five, because your criteria are written out of five. Mark each try PASS
-     or FAIL, count the passes, and read that count against your target — a
-     row targeting 4 of 5 with three PASS cells is MISSED (3/5).
-
-     `python run_eval.py --label before` runs everything and writes the table
-     into results/. Paste it here and fill in the verdicts. -->
-
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
 | 1. A matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
@@ -303,33 +294,26 @@ Found my ultimate 90s grunge dream on Depop for just $30! I’m totally obsessed
 
 ## Verdicts and Diagnoses
 
-<!-- MET or MISSED per criterion against LAST UNIT's target, plus a sentence on
-     how you decided.
-
-     Then, for every miss: which of the four places it happened — a tool, the
-     loop's branch, the session, or the model's output — AND the mechanism.
-
-     Not a diagnosis:  "The fit card was bad."
-     A diagnosis:      "The fit card criterion missed on 2 of 5 items. Both had
-                        an empty brand field. My prompt puts the brand in the
-                        first sentence, so the card opened with a blank and read
-                        like a fragment. The tool worked; the prompt assumed a
-                        field that isn't always there."
-
-     Look for a pattern. Three misses on the same tool is one problem, not
-     three. -->
-
 | # | Criterion | Target | Verdict | How I decided |
 |---|---|---|---|---|
-| 1 |  |  |  |  |
-| 2 |  |  |  |  |
-| 3 |  |  |  |  |
-| 4 |  |  |  |  |
-| 5 |  |  |  |  |
+| 1 | A matching query completes all three tools | 4 of 5 | **MET (5/5)** | All 5 tries in `results/run_..._before_A.md` finished with a non-empty `fit_card` and a 3-step trace. 5/5 clears the 4/5 bar. |
+| 2 | An impossible query stops before the second tool | 5 of 5 | **MET (5/5)** | All 5 tries stopped at the branch with `search_results == []`, before `suggest_outfit` ever ran — confirmed by the 2-step trace each time. |
+| 3 | Selected item stays the same item across tool calls | 5 of 5 | **MET (5/5)** | Not just title-matching from the saved run — re-verified by stubbing `suggest_outfit`/`create_fit_card` and capturing the literal `new_item["id"]` passed to each. All 5 queries: `search_results[0].id == selected_item.id == id passed to suggest_outfit == id passed to create_fit_card`. |
+| 4 | Fit card stays inside its format rules | 4 of 5 | **MET (5/5)** | Checked programmatically (sentence-splitting regex), not by eye: all 5 cards from `results/run_..._before_B.md` have 3 sentences (within 2-4), mention their price once and their platform once, and are pairwise distinct strings. |
+| 5 | search_listings never returns a listing over the price ceiling | 5 of 5 | **MET (5/5)** | Called `search_listings` directly for all 5 price-ceiling queries and listed every returned price — none exceeded its query's `max_price`. |
 
 **Diagnoses**
 
+Nothing missed this run — but "nothing missed" isn't the same as "targets are right," so here's the honest version of that question.
 
+- *Criterion 3*'s evidence from the saved run was thinner than it looked at first: it only showed matching *titles* between `search_results[0]`, `selected_item`, and the trace line for `suggest_outfit` — the trace line for `create_fit_card` gets cut off by `trace.py`'s 110-character line limit before it reaches the `item=` part, so that half of the claim wasn't actually measured. I re-ran all 5 queries with `suggest_outfit`/`create_fit_card` stubbed out so I could capture the literal `.id` at the call site instead. All 4 ids matched in all 5 queries (see the table above) — a real measurement now, not an inference from the code.
+- *Criterion 4*: counting sentences by eye gave 3 for all 5 cards, which felt a little too clean to trust. Checking it with a regex-based sentence splitter instead caught a bug on the first pass — a guard meant to stop "$18." from being misread as a sentence break also blocked a real break after "$30!", undercounting one card as 2 sentences instead of 3. Fixed the regex, reran, and the corrected count still says 3 sentences for all 5 cards. That's exactly the kind of place a manual read could have let a real miscount slide.
+- *Criterion 5*: none of the 5 test queries happen to return a listing priced exactly at its `max_price` (the closest is $45 against a $50 ceiling), so the inclusive edge of `price <= max_price` was never actually exercised — only the "nothing exceeds it" direction was. The criterion as written only claims the latter, so the verdict stands, but it's a real gap in what these 5 scenarios cover, not a gap worth glossing over.
+- Criteria 1 and 2 are the most solid of the five: criterion 2 is plainly deterministic, and criterion 1 had a full, consistent trace showing every step on all 5 tries.
+
+**On whether the 4-of-5 targets are too loose:** I'm not tightening either one, and here's why that's a judgment call rather than me dodging the question. Criterion 1's target exists because `suggest_outfit`/`create_fit_card` depend on an external model service that can fail for reasons outside the code — and this isn't hypothetical: during Milestone 2, triggering the bad-key failure on purpose also caught a *real*, unplanned `503 UNAVAILABLE` from the service on an unrelated empty-wardrobe run. That's direct evidence the failure mode criterion 1 is hedging against actually happens, even though it didn't happen in this particular 5-try window. Tightening to 5/5 off one clean run would be the same mistake as loosening a target after one bad run, just in the flattering direction. Criterion 4's target hedges against the model skipping a formatting instruction under `TEMPERATURE=0.9`; 10 fit cards across both evaluation runs (this one plus the Milestone 3 pass) have all stayed in format, which is reassuring but still a small sample against a non-deterministic generator.
+
+If I had to name one thing worth revisiting, it's not a number — it's criterion 1's *written reason*. `criteria.md` justifies the 4-of-5 target by pointing at `search_listings`'s keyword-matching risk ("a query can describe a listing without sharing a token"), but that risk is actually part of the criterion's precondition ("given a query that *matches*"), not something the test measures. What criterion 1 actually exercises is tool-call completion under real service conditions — a different risk than the one written down. The number still looks right for that actual risk; the explanation underneath it is answering a different question. I'm not revising it, since the criterion itself is measurable and the target isn't wrong — just noting it so the reasoning in `criteria.md` and what's actually being tested don't quietly drift apart.
 
 ---
 
