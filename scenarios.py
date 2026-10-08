@@ -35,18 +35,32 @@ SCENARIOS = [
         "wardrobe": "empty",
         "criterion": None,
     },
-    # TODO: add what your criteria 3, 4 and 5 need.
-    #
-    # Set "criterion" to the number in criteria.md that the scenario tests.
-    # "criterion": None means a diagnostic run — useful to have, but it isn't
-    # one of your five, and run_eval.py marks it as such in the table.
-    #
-    # For a state criterion, any normal query works — what you're checking is
-    # what ends up in the session, not what the user typed.
-    #
-    # For a fit-card criterion, you probably want the SAME query listed more
-    # than once, or several different items, depending on what your criterion
-    # actually says.
+    # Criterion 3: selected_item id must match search_results[0] id, 5
+    # different matching queries. This is a plain assignment, not a model
+    # call, so it needs variety in the query/data, not repeated tries of one
+    # input — run these with `--tries 1`.
+    {"name": "selected item consistency 1", "query": "vintage graphic tee under $30", "wardrobe": "example", "criterion": 3},
+    {"name": "selected item consistency 2", "query": "90s track jacket in size M", "wardrobe": "example", "criterion": 3},
+    {"name": "selected item consistency 3", "query": "silk slip dress in midi length under $40", "wardrobe": "example", "criterion": 3},
+    {"name": "selected item consistency 4", "query": "platform sneakers size 8", "wardrobe": "example", "criterion": 3},
+    {"name": "selected item consistency 5", "query": "denim jacket under $50", "wardrobe": "example", "criterion": 3},
+
+    # Criterion 4: fit card format rules, 5 different items. Run with
+    # `--tries 1` — one card per item, not the same item five times.
+    {"name": "fit card format 1", "query": "vintage graphic tee under $30", "wardrobe": "example", "criterion": 4},
+    {"name": "fit card format 2", "query": "90s track jacket in size M", "wardrobe": "example", "criterion": 4},
+    {"name": "fit card format 3", "query": "silk slip dress in midi length under $40", "wardrobe": "example", "criterion": 4},
+    {"name": "fit card format 4", "query": "platform sneakers size 8", "wardrobe": "example", "criterion": 4},
+    {"name": "fit card format 5", "query": "denim jacket under $50", "wardrobe": "example", "criterion": 4},
+
+    # Criterion 5: search_listings never returns a listing over max_price, 5
+    # queries that each specify one. Deterministic filter — run with
+    # `--tries 1`.
+    {"name": "price ceiling 1", "query": "graphic tee under $30", "wardrobe": "example", "criterion": 5},
+    {"name": "price ceiling 2", "query": "cargo pants under $30", "wardrobe": "example", "criterion": 5},
+    {"name": "price ceiling 3", "query": "band tee under $20", "wardrobe": "example", "criterion": 5},
+    {"name": "price ceiling 4", "query": "silk slip dress midi under $40", "wardrobe": "example", "criterion": 5},
+    {"name": "price ceiling 5", "query": "denim jacket under $50", "wardrobe": "example", "criterion": 5},
 ]
 
 WARDROBES = ("example", "empty")

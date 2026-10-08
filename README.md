@@ -194,10 +194,7 @@ empty outfit: Can't write a caption without an outfit suggestion.
   edge cases (`"M"` vs `"S/M"` → true, `"M"` vs `"US 9"` → false, `"XL"` vs
   `"XL (fits oversized)"` → true) before trusting it in the real search flow.
 
-<!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
-
-     Don't fill these in during unit 3.
-     ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════ -->
 
 ---
 
@@ -214,17 +211,92 @@ empty outfit: Can't write a caption without an outfit suggestion.
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. A matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. An impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. The selected item stays the same item across tool calls | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. The fit card stays inside its format rules | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. search_listings never returns a listing over the price ceiling | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+
+**How the five tries were produced** (`scenarios.py`, run through
+`run_eval.py::main` → `run_eval.py::run_once` → `agent.py::run_agent`):
+
+- Criteria 1 and 2 call the model (or, for criterion 2, hit the branch that
+  skips the model), so the thing worth varying across 5 tries is the model's
+  answer to the *same* input. Each is one scenario in `scenarios.py`
+  (`"matching query completes"`, `"impossible query stops early"`), run 5
+  times with caching off: `python run_eval.py --label before_A --tries 5`.
+- Criteria 3, 4, and 5 are each written as "5 *different* queries/items," not
+  "the same input 5 times" — criterion 3 and 5 are plain deterministic code
+  paths with nothing for repetition to reveal, and criterion 4 explicitly asks
+  for different items. Each got 5 separate scenario entries in
+  `scenarios.py` (e.g. `"price ceiling 1"` … `"price ceiling 5"`), run once
+  each: `python run_eval.py --label before_B --tries 1`. Try 1-5 in the table
+  above are those 5 distinct scenarios' single tries, not repeats.
+- Full raw output for both passes: `results/run_2026-10-07_2056_before_A.md`
+  and `results/run_2026-10-07_2059_before_B.md`.
 
 **Real output from one try**, pasted as text, naming the file and function
-that produced it:
+that produced it. All five below come from `agent.py::run_agent`, invoked by
+`run_eval.py::run_once`.
+
+**Criterion 1** — `matching query completes`, try 1, query `vintage graphic tee under $30`:
 
 ```
+[1] search_listings (via MCP)
+      in:  description='vintage graphic tee', size=None, max_price=30.0
+      out: 10 items: Y2K Baby Tee — Butterfly Print, Graphic Tee — 2003 Tour Bootleg Style, Vintage Band Tee — Faded Grey … +7 more
+[2] suggest_outfit
+      in:  new_item='Y2K Baby Tee — Butterfly Print', wardrobe_items=10
+      out: Pair the Y2K butterfly baby tee with your baggy dark-wash straight-leg jeans and chunky white sneakers for an …
+[3] create_fit_card
+      in:  outfit='Pair the Y2K butterfly baby tee with your baggy dark-wash straight-leg jeans and chunky white sneakers…
+      out: Found the ultimate Y2K butterfly baby tee and I’m literally obsessed. Got it listed on Depop for just $18 so y…
 
+fit_card: "Found the ultimate Y2K butterfly baby tee and I’m literally obsessed. Got it listed on Depop for just $18 so you can live out all your early 2000s pop star dreams. Pair it with baggy jeans and chunky sneakers for the absolute easiest casual fit. ✨"
+```
+
+**Criterion 2** — `impossible query stops early`, try 1, query `designer ballgown size XXS under $5`:
+
+```
+[1] search_listings (via MCP)
+      in:  description='designer ballgown', size='XXS', max_price=5.0
+      out: [] (empty)
+[2] branch
+      →    empty search results — stopping before suggest_outfit
+
+session["error"] = "No listings matched. Try raising the price ceiling, dropping the size filter, or using different keywords."
+session["fit_card"] = None  (never reached)
+```
+
+**Criterion 3** — `selected item consistency 2`, query `90s track jacket in size M`:
+
+```
+[1] search_listings (via MCP)
+      in:  description='90s track jacket', size='M', max_price=None
+      out: 4 items: 90s Track Jacket — Navy/White Stripe, 90s Leather Bomber — Black, 90s Silk Slip Dress — Floral, Midi Length … +1 more
+[2] suggest_outfit
+      in:  new_item='90s Track Jacket — Navy/White Stripe', wardrobe_items=10
+
+session["search_results"][0]["title"] == "90s Track Jacket — Navy/White Stripe"
+session["selected_item"]["title"]     == "90s Track Jacket — Navy/White Stripe"   (same object, same id)
+new_item passed to suggest_outfit      == "90s Track Jacket — Navy/White Stripe"
+```
+
+**Criterion 4** — `fit card format 3`, item `90s Silk Slip Dress — Floral, Midi Length` ($30.0, depop):
+
+```
+Found my ultimate 90s grunge dream on Depop for just $30! I’m totally obsessed with throwing an oversized grey crewneck right over this floral silk midi and pairing it with chunky sneakers. Such an easy way to make a dainty slip dress feel way more *me*. ✨
+```
+3 sentences, mentions Depop once and $30 once, not identical to any of the other 4 cards in `results/run_2026-10-07_2059_before_B.md`.
+
+**Criterion 5** — all 5 price-ceiling scenarios, checked directly against `tools.py::search_listings`'s output (no listing exceeds its query's `max_price`):
+
+```
+'graphic tee' max_price=30.0: prices=[18.0, 24.0, 15.0, 19.0, 27.0, 26.0]
+'cargo pants' max_price=30.0: prices=[27.0]
+'band tee' max_price=20.0: prices=[19.0, 18.0, 15.0]
+'silk slip dress midi' max_price=40.0: prices=[30.0, 28.0]
+'denim jacket' max_price=50.0: prices=[42.0, 38.0, 45.0, 24.0, 33.0, 30.0, 27.0]
 ```
 
 ---
@@ -262,16 +334,6 @@ that produced it:
 ---
 
 ## Loop Trace
-
-<!-- One full run, printed step by step, with the MCP call visible in it.
-
-     `python app.py ask '...' --trace` once you've added the trace.step()
-     calls in Milestone 2.
-
-     Worth pasting BOTH the happy path and the empty-search path. The empty
-     one should be visibly shorter, because it stops. If your two traces are
-     the same length, your branch isn't working — and this is the fastest way
-     anyone will ever find that out. -->
 
 **Happy path**
 
@@ -320,8 +382,6 @@ $ python app.py ask 'designer ballgown size XXS under $5' --trace
 - *Model unavailable* — changed the last character of `GEMINI_API_KEY` in `.env`, then ran a query I hadn't asked before (`retro bowling shirt under $25`) so the cache couldn't mask it. `suggest_outfit` raised `ModelUnavailable`, caught in `run_agent()`, which set `session["error"]` and returned before `create_fit_card` ran: *"The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com."* Key restored immediately after.
 
   One honest note: on the first two attempts at the empty-wardrobe run, the real model backend returned a transient `503 UNAVAILABLE` ("experiencing high demand") — not something I triggered. The same `ModelUnavailable` handler caught that too, with no crash, which is a second (unplanned) confirmation that the handler works for any reason the model can't be reached, not just a bad key.
-
-
 
 ---
 
