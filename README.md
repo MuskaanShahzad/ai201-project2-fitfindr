@@ -371,31 +371,38 @@ $ python app.py ask 'designer ballgown size XXS under $5' --trace
 
 ## The Improvement
 
-<!-- What you changed, why your diagnosis pointed at it, and the after-run in
-     the same table format. One change, measured properly.
+**What I changed:** In `agent.py::run_agent`, I reordered the `trace.step()` input strings for `suggest_outfit` and `create_fit_card`, and added each listing's actual `id` (not just its title) to both. Before: `inputs=f"outfit={...!r}, item={...title!r}"` — the long `outfit` text always came first, so `trace.py`'s 110-character line limit cut the line off before it ever reached `item=`. After: `inputs=f"item_id={...id!r}, item={...title!r}, outfit={...!r}"` — identity comes first, so it's never the part that gets truncated away, and `item_id` is the literal field criterion 3 is about.
 
-     `python run_eval.py --label after` -->
-
-**What I changed:**
-
-**Which failure it was meant to fix:**
+**Which failure it was meant to fix:** Not a PASS/FAIL miss — Milestone 4's diagnosis for criterion 3 found an evidence gap, not a behavior bug: the saved trace couldn't actually show whether the right item's `id` reached `create_fit_card`, so I had to write a separate script that stubbed out the tool calls just to get real proof. This fixes that gap directly in the trace itself.
 
 ### Run Log — After
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. A matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | FAIL | MET (4/5) |
+| 2. An impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. The selected item stays the same item across tool calls | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. The fit card stays inside its format rules | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. search_listings never returns a listing over the price ceiling | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
 
-**Did it help, and how do I know:**
+Same methodology as the before-run: criteria 1 and 2 are one scenario each, run 5 times (`--label after_A --tries 5`); criteria 3-5 are 5 different scenarios, run once each (`--label after_B --tries 1`). Raw output: `results/run_2026-10-07_2250_after_A.md` and `results/run_2026-10-07_2253_after_B.md`.
 
-<!-- If it made things worse, say that. Honestly reported, that earns full
-     credit and is more interesting than one that worked. -->
+**Criterion 3, directly from the saved trace now** (`results/run_..._after_B.md`, `selected item consistency 2`):
 
+```
+[2] suggest_outfit
+      in:  new_item_id='lst_004', new_item='90s Track Jacket — Navy/White Stripe', wardrobe_items=10
+[3] create_fit_card
+      in:  item_id='lst_004', item='90s Track Jacket — Navy/White Stripe', outfit='Pair the 90s track jacket with your wh…
+```
 
+Compare to the before-run's version of the same line: `in:  outfit='Pair the Y2K butterfly baby tee with your baggy dark-wash straight-leg jeans and chunky white sneakers…` — cut off before `item=` ever appeared. The id is now the first thing on the line in every scenario, every time.
+
+**Did it help, and how do I know:** Yes, for what it was actually meant to fix — but it's a narrow kind of help, and the honest version of this answer has two parts.
+
+It fixed the evidence gap exactly as intended: criterion 3's id-match is now visible directly in a saved `run_eval.py` output file, for every scenario, with nothing truncated away. Before this change, that same claim required a separate one-off script stubbing out `suggest_outfit`/`create_fit_card` to capture the real `.id` — useful once, but not something a plain re-run of `run_eval.py` would ever show. Now it's just... there, in the log, every time.
+
+It did **not** change any PASS/FAIL outcome, and it couldn't have — the change only touches what gets printed to the trace, not what the agent does. So the two runs are a fair comparison of the same behavior, not a before/after of a bug getting fixed. The one real difference in the numbers (criterion 1 dropped from 5/5 before to 4/5 after) wasn't caused by my change either — it was a second, unplanned real failure: try 5 hit an actual `ModelUnavailable` (`Server disconnected without sending a response`), caught cleanly with no crash, same as the `503` from Milestone 2. That's not a problem with the code; if anything it's reassuring in a different way, since it's live evidence that criterion 1's 4-of-5 target reflects a real failure mode rather than a hypothetical one, and the agent handled it exactly as designed.
 
 ---
 
@@ -404,43 +411,5 @@ $ python app.py ask 'designer ballgown size XXS under $5' --trace
 <!-- For each criterion still missed: what you'd do, and why you stopped where
      you did. "I ran out of time" is fine if it's true. Pretending nothing is
      left is not. -->
-
-
-
-<!-- ═════════════════════════════════════════════════════════════════════
-
-     SUBMISSION CHECKLIST — unit 3
-
-       [ ] criteria.md has five numbered criteria, each with a target
-       [ ] Each criterion has a reason underneath it
-       [ ] All five unit 3 sections above have real content
-       [ ] Tool Inventory: all three tools, inputs WITH TYPES, a specific
-           return value, and the empty case
-       [ ] Planning Loop names the branch rule and agent.py::run_agent
-       [ ] Sample Run: one full query plus the three per-tool tests, as text
-       [ ] At least four new commits
-       [ ] Repository URL submitted — WRITE IT DOWN, you submit the same one
-           next unit
-
-     SUBMISSION CHECKLIST — unit 4
-
-       [ ] mcp_server.py exists with one tool registered
-           (or a written record of exactly where the rewire broke)
-       [ ] Run Log — Before, five criteria, five tries each
-       [ ] Real output pasted underneath, naming file and function
-       [ ] A verdict on every criterion
-       [ ] A diagnosis for every miss, naming a place AND a mechanism
-       [ ] Loop Trace, with the MCP call visible in it
-       [ ] All three failure modes triggered and handled
-       [ ] One improvement, with Run Log — After in the same format
-       [ ] What's Still Broken
-       [ ] At least four new commits
-       [ ] The SAME repository URL as last unit
-
-     Do not delete and recreate this repository. Your commit history is what
-     shows your criteria existed before your results did.
-     ═════════════════════════════════════════════════════════════════════ -->
-
----
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
