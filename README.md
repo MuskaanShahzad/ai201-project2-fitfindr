@@ -690,21 +690,15 @@ First, I would add the time of each stage (search, outfit, card) and the number 
 
 **How I Used AI**
 
-I worked on the capstone with Claude Code in the same repository, one milestone at a time. I made the scope decisions myself (the system, shape A on Path B, what was out of scope, five trials for every criterion) and approved every commit before it was made. Three moments from the work:
+I worked on the capstone with Claude Code in the same repository, one milestone at a time. I made the scope decisions myself (the system, shape A on Path B, what was out of scope, five trials for every criterion) and approved every commit before it was made. Two moments from the work:
 
 **Moment 1**
-
-- *What I asked for:* Draft the five capstone criteria, then check them before I committed anything.
-- *What came back:* Claude wrote five criteria with targets and reasons. Then a separate Claude agent, which saw only the five criteria and none of the earlier conversation, read them cold. It found two real gaps: "a matching query" was never named, so a result could depend on which query I picked, and my rule about the cache would have let me throw out a trial I did not like. Claude had also set the targets for criteria 4 and 5 after seeing my Milestone 3 measurements.
-- *What I changed:* I named five exact matching queries and one impossible query, and made the rule that every trial counts. I changed the trials from three to five to match the rest of the course. I kept the note in `criteria.md` saying the targets for criteria 4 and 5 were set after seeing the first measurements.
-
-**Moment 2**
 
 - *What I asked for:* Find out why criterion 4 (latency) was missed, and fix it.
 - *What came back:* The log only had the total time, so Claude did not guess. It wrote a probe that timed each stage of a run separately. That showed that most slow runs were one model call stalling for 8 to 9 s, and the rest were the MCP search. Claude recommended a timeout with a retry, and warned me it crossed my own "no timeouts or retries" line in Out of Scope. I chose it anyway, because the diagnosis pointed straight at it. Claude's first two versions were wrong: the first made the service reject every call (400), and the second set a timeout the library ignored.
 - *What I changed:* Because Claude tested each version on its own before the real trials, I found both failures before they cost me a run. The final version runs the call in a thread inside `generate.py`. I wrote the crossed scope line and both failed versions into the README so the Improvement section tells the whole story.
 
-**Moment 3**
+**Moment 2**
 
 - *What I asked for:* Run the full set again after the fix and tell me whether it helped.
 - *What came back:* All five criteria were MET. But Claude pointed out that the timeout never fired in any after run, and that the MCP search also got faster, which the change could not explain. So the better result might just be calmer conditions.
