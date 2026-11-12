@@ -27,10 +27,10 @@ web server has to be. The reason is worth reading before you deploy: see the
 note above `_one_at_a_time` below — it also decides which gunicorn worker you
 can use.
 
-⚠️ There is deliberately NO logging, NO timing and NO request counting in this
-file. That is unit 9's follow-along: you instrument this yourself, first, and
-then deploy it. A structured log you were handed teaches you nothing about
-what belongs in one — and the timing field is the one everybody skips.
+Logging: every request that reaches the agent is run through `run_logged()`
+in runlog.py, which appends one JSON line to logs/runs.jsonl (query, outcome,
+output, time taken, model calls, tokens). A request rejected with a 400 never
+reaches the agent, so it is not logged.
 """
 
 import os
@@ -43,7 +43,7 @@ import config  # noqa: F401
 
 from flask import Flask, jsonify, request
 
-from agent import run_agent
+from runlog import run_logged
 from utils.data_loader import get_example_wardrobe
 
 app = Flask(__name__)
@@ -140,7 +140,7 @@ def ask():
     session = None
     with _one_at_a_time:
         try:
-            session = run_agent(query, wardrobe)
+            session = run_logged(query, wardrobe)
         except Exception as exc:  # noqa: BLE001 — a 500 with a sentence beats a hang
             failure = f"{type(exc).__name__}: {exc}"
 
