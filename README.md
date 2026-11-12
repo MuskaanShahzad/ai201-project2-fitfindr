@@ -519,3 +519,63 @@ I measured the cost of one matching run from the 12 `ok` runs in the log above. 
 So one run costs about **500 tokens and about 3 seconds**. The median time is 3.0 seconds; the one 6.4-second run is a single slow run and I did not look into why. A query that matches nothing costs 0 tokens and about 1.3 seconds, which is the time the MCP search takes on its own (it starts a separate Python process). I am on the free tier, so the money spent was $0, and I have not turned the tokens into dollars because I did not measure a price.
 
 One note on the clean-clone test: it passed the first time, so nothing was missing from `RUNNING.md`. The only fix was in my own first draft, where a curl example would have lost the `$30` in the query. I replaced it before committing.
+
+
+**Run Log Before**
+
+This is the test of the extension before any fix. I ran it with `python run_capstone.py --label before --runs 3`. One run is the whole test once: five trials for each criterion, scored exactly as `criteria.md` words them. I repeated the whole test three times with the cache off and nothing changed in between, waiting 60 seconds between runs. The script (`run_capstone.py`) starts `serve.py`, sends every request over HTTP, and reads the log line each request wrote. The full output is in `results/capstone_before.md`, and the log lines are in `logs/runs.jsonl`.
+
+How I read the table: each cell is how many of that run's 5 trials passed. A criterion is MET only if all three runs reach its target. Criteria 1, 4 and 5 are scored from the same five matching requests in each run (the response for criterion 1, the log line's `latency_s` for criterion 4, its tokens and `model_calls` for criterion 5). Before the real runs I did one throwaway dry run to catch bugs in the test script. I restored the log and deleted its output, so it is not in these results.
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. A matching query completes | at least 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 2. An impossible query stops before any model call | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 3. Every kind of request leaves one complete log line | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. A warm matching request takes 5.0 s or less | at least 4 of 5 | 5/5 | 3/5 | 4/5 | MISSED |
+| 5. One matching run uses 600 tokens or fewer | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+
+Criterion 4 is the only miss: run 2 had 3 of 5 and run 3 had 4 of 5. The other four criteria hit their target in every run.
+
+The output below is real, copied from `results/capstone_before.md`. Each log line was written by `runlog.py::run_logged` for a request that `run_capstone.py::one_run` sent.
+
+*Criterion 1, run 1.* The five matching queries. Each returned HTTP 200 with a fit card (the `output` field is the fit card), 5 of 5:
+
+```json
+{"timestamp": "2026-11-12T02:14:31+00:00", "query": "vintage graphic tee under $30", "outcome": "ok", "output": "Found the ultimate Y2K baby tee with the cutest pastel butterfly print. Grabbed it on Depop for just $18 and I’m already obsessed. Throwing it on with baggy dark-wash denim and chunky sneakers for that 2000s off-duty model vibe. ✨🦋", "selected_item_id": "lst_002", "latency_s": 3.47, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 366, "output_tokens": 112}
+{"timestamp": "2026-11-12T02:14:34+00:00", "query": "90s track jacket in size M", "outcome": "ok", "output": "Living out my 90s streetwear dreams in this navy and white striped track jacket. Snagged it on Poshmark for $45 and honestly, I'm never taking it off. Throwing it over a white ribbed tank and baggy denim is about to be my entire personality this season.", "selected_item_id": "lst_004", "latency_s": 3.32, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 382, "output_tokens": 125}
+{"timestamp": "2026-11-12T02:14:37+00:00", "query": "denim jacket under $50", "outcome": "ok", "output": "Obsessed with how good this cropped light wash jacket looks thrown over literally everything. Paid $42 on Poshmark and it’s giving the ultimate effortlessly cool, 90s off-duty model vibe. Snag it before I change my mind and keep it for myself!", "selected_item_id": "lst_007", "latency_s": 2.57, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 367, "output_tokens": 114}
+{"timestamp": "2026-11-12T02:14:40+00:00", "query": "platform sneakers size 8", "outcome": "ok", "output": "Scored these chunky white platforms on Poshmark for just $48 and I am officially in my Y2K model-off-duty era. Going to live in these with baggy denim and a vintage jacket all fall. Honestly, the ultimate lazy-girl street style hack.", "selected_item_id": "lst_019", "latency_s": 2.73, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 375, "output_tokens": 120}
+{"timestamp": "2026-11-12T02:14:43+00:00", "query": "silk slip dress in midi length under $40", "outcome": "ok", "output": "Finally found my dream 90s floral slip dress and I am never taking it off. Got this midi beauty on Depop for just $30 and the grunge-meets-feminine styling options are endless. Obsessed with layering it over a white ribbed tank with chunky sneakers, or just throwing an oversized crewneck right over top.", "selected_item_id": "lst_013", "latency_s": 3.65, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 393, "output_tokens": 135}
+```
+
+*Criterion 2, run 1.* The impossible query, first two of five. `outcome` is `no_results`, `model_calls` is 0, and `output` is the message naming what to change:
+
+```json
+{"timestamp": "2026-11-12T02:14:45+00:00", "query": "designer ballgown size XXS under $5", "outcome": "no_results", "output": "No listings matched. Try raising the price ceiling, dropping the size filter, or using different keywords.", "selected_item_id": null, "latency_s": 1.31, "model_calls": 0, "cache_hits": 0, "prompt_tokens": 0, "output_tokens": 0}
+{"timestamp": "2026-11-12T02:14:46+00:00", "query": "designer ballgown size XXS under $5", "outcome": "no_results", "output": "No listings matched. Try raising the price ceiling, dropping the size filter, or using different keywords.", "selected_item_id": null, "latency_s": 1.36, "model_calls": 0, "cache_hits": 0, "prompt_tokens": 0, "output_tokens": 0}
+```
+
+*Criterion 3, run 1.* The five requests in order: `ok`, `ok`, `no_results`, `rejected` (the empty query), and `model_unavailable` (the wrong-key server). Each wrote exactly one line with all ten fields:
+
+```json
+{"timestamp": "2026-11-12T02:15:27+00:00", "query": "vintage graphic tee under $30", "outcome": "ok", "output": "Obsessed with this little butterfly tee—giving major 2000s pop star off-duty vibes. Got it on Depop for just $18 and I’m already living in it. Paired it with my go-to baggy jeans and a beat-up denim jacket for the ultimate nostalgic look. 🦋✨", "selected_item_id": "lst_002", "latency_s": 5.27, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 367, "output_tokens": 118}
+{"timestamp": "2026-11-12T02:15:29+00:00", "query": "90s track jacket in size M", "outcome": "ok", "output": "Found the ultimate 90s streetwear piece and I'm obsessed. Snagged this navy and white stripe track jacket for just $45 over on Poshmark. Throw it on with a ribbed tank, baggy denim, and chunky sneakers for that effortless model-off-duty vibe.", "selected_item_id": "lst_004", "latency_s": 2.38, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 388, "output_tokens": 129}
+{"timestamp": "2026-11-12T02:15:30+00:00", "query": "designer ballgown size XXS under $5", "outcome": "no_results", "output": "No listings matched. Try raising the price ceiling, dropping the size filter, or using different keywords.", "selected_item_id": null, "latency_s": 1.42, "model_calls": 0, "cache_hits": 0, "prompt_tokens": 0, "output_tokens": 0}
+{"timestamp": "2026-11-12T02:15:30+00:00", "query": "", "outcome": "rejected", "output": "Send JSON with a 'query' field, e.g. {\"query\": \"vintage graphic tee under $30\"}", "selected_item_id": null, "latency_s": 0.0, "model_calls": 0, "cache_hits": 0, "prompt_tokens": 0, "output_tokens": 0}
+{"timestamp": "2026-11-12T02:15:37+00:00", "query": "vintage graphic tee under $30", "outcome": "model_unavailable", "output": "The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com.", "selected_item_id": "lst_002", "latency_s": 5.36, "model_calls": 1, "cache_hits": 0, "prompt_tokens": 0, "output_tokens": 0}
+```
+
+*Criterion 4, run 2 (the run that missed).* `latency_s` for the five matching queries was 2.67, 2.58, 6.89, 6.96 and 3.29, so 3 of 5 were 5.0 or less:
+
+```json
+{"timestamp": "2026-11-12T02:16:45+00:00", "query": "vintage graphic tee under $30", "outcome": "ok", "output": "Found the absolute cutest butterfly tee on Depop for just $18! Obsessed with this pastel Y2K vibe. Gonna pair it with my go-to baggy jeans and a vintage denim jacket for the ultimate effortless look.", "selected_item_id": "lst_002", "latency_s": 2.67, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 371, "output_tokens": 100}
+{"timestamp": "2026-11-12T02:16:48+00:00", "query": "90s track jacket in size M", "outcome": "ok", "output": "Found the ultimate 90s streetwear piece and I’m obsessed. Snagged this navy and white striped track jacket for $45 over on Poshmark. Throwing it on over a white ribbed tank and baggy denim is about to be my entire personality this season.", "selected_item_id": "lst_004", "latency_s": 2.58, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 380, "output_tokens": 118}
+{"timestamp": "2026-11-12T02:16:55+00:00", "query": "denim jacket under $50", "outcome": "ok", "output": "Obsessed with this light wash cropped denim jacket I just scored on Poshmark for $42. It’s giving major off-duty model vibes, whether I throw it over a ribbed tank and khakis or layer it heavy-duty style with a baggy crewneck and combat boots. Such a good closet staple!", "selected_item_id": "lst_007", "latency_s": 6.89, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 372, "output_tokens": 126}
+{"timestamp": "2026-11-12T02:17:02+00:00", "query": "platform sneakers size 8", "outcome": "ok", "output": "Obsessed is an understatement. Snagged these chunky platform sneakers on Poshmark for $48 and they instantly complete my whole Y2K streetwear vibe. Can't wait to style them with baggy denim and a vintage jacket all fall.", "selected_item_id": "lst_019", "latency_s": 6.96, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 373, "output_tokens": 111}
+{"timestamp": "2026-11-12T02:17:05+00:00", "query": "silk slip dress in midi length under $40", "outcome": "ok", "output": "Obsessed is an understatement. Found this 90s floral midi on Depop for just $30 and I’m ready to live out all my grunge-romance dreams. Gonna layer it with combat boots and an oversized crewneck for that perfect messy-chic vibe. ✨🖤", "selected_item_id": "lst_013", "latency_s": 3.29, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 385, "output_tokens": 117}
+```
+
+*Criterion 5, run 1.* Uses the five lines pasted under criterion 1. `prompt_tokens` plus `output_tokens` was 478, 507, 481, 495 and 528, all 600 or less, and `model_calls` was 2 every time.
+
+What the numbers show so far (the diagnosis comes later): the slow runs were not tied to one query, because `denim jacket under $50` took 2.57 s in run 1 and 6.89 s in run 2. Their token counts were normal. The two servers that handle the timed requests (A and C in `run_capstone.py`) hit no rate-limit pause in any run. Run 3 also had one run of 19.46 s (`silk slip dress in midi length under $40`). The first request each server answered (the warm-up) took 5.0 to 6.3 s every time, against about 3 s for the warm ones.
