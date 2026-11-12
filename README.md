@@ -437,3 +437,27 @@ Nothing was missed, so there's no bug to fix — just honest notes on what's lef
 Criteria 2 and 3 have nothing open — neither depends on the model, and both passed cleanly every time.
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
+
+
+---
+
+## Capstone
+
+**The System**
+
+FitFindr, the same repo and code from units 3 and 4.
+
+**The Shape**
+
+Shape A (deploy and instrument) on Path B (local, with logs). Until now FitFindr only ran when I typed a command in my terminal, and the only record of a run was what I copied by hand. I'm adding a server start command (`serve.py`) and a log that writes one JSON line per request: when it ran, the query, what came out, how long it took, and how many tokens it used. Success, no results and model failure all get logged. The log also gives me the cost and latency numbers.
+
+**Out of Scope**
+
+- No hosting. Path B only needs a start command and a committed log.
+- No changes to the agent: tools, prompts, search and loop stay as they are.
+- No new failure handling (retries, timeouts). A failed run gets logged, not fixed.
+- No stretch items.
+
+**Size Check**
+
+One small logging wrapper around `run_agent`, one call to it in `serve.py`, a script that sends requests, and a new `RUNNING.md`. About an hour of building.
