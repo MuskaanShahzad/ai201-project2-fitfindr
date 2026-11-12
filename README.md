@@ -521,6 +521,17 @@ So one run costs about **500 tokens and about 3 seconds**. The median time is 3.
 One note on the clean-clone test: it passed the first time, so nothing was missing from `RUNNING.md`. The only fix was in my own first draft, where a curl example would have lost the `$30` in the query. I replaced it before committing.
 
 
+Later runs gave the same number. Across all 60 successful runs in `logs/runs.jsonl` (12 from the first session, 24 from the before trials, 24 from the after trials), one run used 495 tokens on average (376 prompt and 119 output), with a range of 453 to 539. The timeout change did not move it: 494.0 tokens on average in the before trials and 496.9 in the after trials.
+
+*What it would cost for a hundred people a day.* I'm assuming each person makes 5 requests a day, which is my guess, not something I measured. The price is the published list price for `gemini-3.5-flash-lite`, $0.30 per million input tokens and $2.50 per million output tokens. I took it from third-party price trackers ([pricepertoken.com](https://pricepertoken.com/pricing-page/model/google-gemini-3.5-flash-lite) and [anotherwrapper.com](https://anotherwrapper.com/llm-pricing/gemini-3.5-flash-lite)), not from Google's own page, so I would check it there before relying on it.
+
+- Runs per day: 100 people x 5 requests = 500 runs
+- Prompt tokens: 500 x 376 = 188,000, which costs 188,000 / 1,000,000 x $0.30 = $0.056
+- Output tokens: 500 x 119 = 59,500, which costs 59,500 / 1,000,000 x $2.50 = $0.149
+- Total: $0.056 + $0.149 = about **$0.21 a day**, or about $6 a month (30 x $0.205)
+
+One run is about $0.0004 (376 x $0.30 / 1,000,000 + 119 x $2.50 / 1,000,000). Two cautions: the price might count the model's hidden "thinking" tokens as output, and the counts I logged (`candidates_token_count`) may not include them, so the real bill could be somewhat higher. And the money is not the limit. On the free tier I used, the limit is 15 model requests a minute, which is about 7 runs a minute. So 500 runs need at least 500 / 7 = 71 minutes of spread-out use. `serve.py` also handles one request at a time at about 3.3 s each, so if all 100 people asked at once, the last would wait about 100 x 3.3 = 330 s, a little over 5 minutes.
+
 **Run Log Before**
 
 This is the test of the extension before any fix. I ran it with `python run_capstone.py --label before --runs 3`. One run is the whole test once: five trials for each criterion, scored exactly as `criteria.md` words them. I repeated the whole test three times with the cache off and nothing changed in between, waiting 60 seconds between runs. The script (`run_capstone.py`) starts `serve.py`, sends every request over HTTP, and reads the log line each request wrote. The full output is in `results/capstone_before.md`, and the log lines are in `logs/runs.jsonl`.
@@ -658,3 +669,39 @@ The change has costs I did not hide:
 - **The tokens for a timed-out call are not counted.** The call never returned a usage count, so the logged cost for a run with a retry is a little too low.
 - **The first request after the server starts can be cut off too.** A cold connection can take longer than 2 s, so that one is sometimes retried.
 - **It does nothing for the slow MCP search,** which was 2 of the 6 slow runs before.
+
+
+**What's Still Broken**
+
+No criterion is missed after the fix. All five were MET in all three after runs. I did not revise any criterion, so there is no changed line to show. Here is what is still open:
+
+- **Criterion 4 is met, but I haven't shown why.** The timeout never fired in the after runs, so I only know it works from the forced-stall check. The slow MCP search (2 of the 6 slow runs before the fix, 4.4 s and 5.0 s against a normal 1.4 s) is also still there, and my change does nothing for it. I stopped because the milestone asks for one improvement, and finding the cause of the slow search would be a second piece of work.
+- **Criterion 5 would fail on a retried run.** It requires `model_calls` of 2, and a timeout retry makes it 3. That did not happen in my runs, so I left the criterion alone. If it did, I would count retries in their own field instead of loosening the target.
+- **Two targets were set too low.** Criterion 1 reached 5 of 5 in all six runs, so I would tighten it from 4 of 5 to 5 of 5. Criterion 4's 5.0 s allowed a 3.6 s system a lot of room (the slowest warm run in the after trials was 3.63 s), so once the stalls are understood I would try 4.0 s.
+- **The `exception` outcome has never written a line,** because nothing in my runs crashed the agent in a way the logger caught. I have not seen that path work.
+
+**What I'd Do Next**
+
+First, I would add the time of each stage (search, outfit, card) and the number of timeout retries to every log line. I only found the stalls by writing a separate probe, and without those fields I cannot tell from the log whether the timeout is working in real use or whether retries are changing the call count in criterion 5.
+
+**How I Used AI**
+
+I worked on the capstone with Claude Code in the same repository, one milestone at a time. I made the scope decisions myself (the system, shape A on Path B, what was out of scope, five trials for every criterion) and approved every commit before it was made. Three moments from the work:
+
+**Moment 1**
+
+- *What I asked for:* Draft the five capstone criteria, then check them before I committed anything.
+- *What came back:* Claude wrote five criteria with targets and reasons. Then a separate Claude agent, which saw only the five criteria and none of the earlier conversation, read them cold. It found two real gaps: "a matching query" was never named, so a result could depend on which query I picked, and my rule about the cache would have let me throw out a trial I did not like. Claude had also set the targets for criteria 4 and 5 after seeing my Milestone 3 measurements.
+- *What I changed:* I named five exact matching queries and one impossible query, and made the rule that every trial counts. I changed the trials from three to five to match the rest of the course. I kept the note in `criteria.md` saying the targets for criteria 4 and 5 were set after seeing the first measurements.
+
+**Moment 2**
+
+- *What I asked for:* Find out why criterion 4 (latency) was missed, and fix it.
+- *What came back:* The log only had the total time, so Claude did not guess. It wrote a probe that timed each stage of a run separately. That showed that most slow runs were one model call stalling for 8 to 9 s, and the rest were the MCP search. Claude recommended a timeout with a retry, and warned me it crossed my own "no timeouts or retries" line in Out of Scope. I chose it anyway, because the diagnosis pointed straight at it. Claude's first two versions were wrong: the first made the service reject every call (400), and the second set a timeout the library ignored.
+- *What I changed:* Because Claude tested each version on its own before the real trials, I found both failures before they cost me a run. The final version runs the call in a thread inside `generate.py`. I wrote the crossed scope line and both failed versions into the README so the Improvement section tells the whole story.
+
+**Moment 3**
+
+- *What I asked for:* Run the full set again after the fix and tell me whether it helped.
+- *What came back:* All five criteria were MET. But Claude pointed out that the timeout never fired in any after run, and that the MCP search also got faster, which the change could not explain. So the better result might just be calmer conditions.
+- *What I changed:* I did not claim the fix worked. The README says criterion 4 went from MISSED to MET but that I cannot credit my change. To get some evidence, Claude wrote a script that forces a 9 s stall, which showed 2.4 s with the timeout and 10.2 s without. I also asked Claude whether it had used my API key, and it checked the repo and found the key in no file and no commit.
