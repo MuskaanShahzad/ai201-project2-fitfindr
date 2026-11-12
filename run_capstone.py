@@ -85,10 +85,11 @@ class Server:
         self.proc.wait(timeout=15)
         self.err.flush()
 
-    def rate_limit_pauses(self) -> int:
+    def count_in_stderr(self, marker: str) -> int:
+        """How many times the server printed a marker such as "[rate limit]"."""
         self.err.flush()
         with open(self.err.name, encoding="utf-8", errors="replace") as f:
-            return f.read().count("[rate limit]")
+            return f.read().count(marker)
 
 
 def send(port: int, query: str) -> dict:
@@ -184,8 +185,8 @@ def one_run(run_number: int) -> dict:
             t = send(a.port, IMPOSSIBLE)
             result["c2"].append((t, score_2(t)))
             print(f"  nomatch {IMPOSSIBLE[:40]:<40} c2={score_2(t)}", flush=True)
-        pauses = a.rate_limit_pauses()
-    result["notes"].append(f"server A rate-limit pauses: {pauses}")
+        result["notes"].append(f"server A rate-limit pauses: {a.count_in_stderr('[rate limit]')}, "
+                               f"timeout retries: {a.count_in_stderr('[timeout]')}")
     time.sleep(PAUSE_BETWEEN_SERVERS)
 
     plan = [(MATCHING[0], "ok"), (MATCHING[1], "ok"), (IMPOSSIBLE, "no_results"), ("", "rejected")]
@@ -194,8 +195,8 @@ def one_run(run_number: int) -> dict:
             t = send(c.port, q)
             result["c3"].append((t, score_3(t, expected), expected))
             print(f"  c3 {expected:<18} {q[:30]!r:<34} pass={score_3(t, expected)}", flush=True)
-        pauses = c.rate_limit_pauses()
-    result["notes"].append(f"server C rate-limit pauses: {pauses}")
+        result["notes"].append(f"server C rate-limit pauses: {c.count_in_stderr('[rate limit]')}, "
+                               f"timeout retries: {c.count_in_stderr('[timeout]')}")
     with Server(5002, fake_key=True) as b:
         t = send(b.port, MATCHING[0])
         result["c3"].append((t, score_3(t, "model_unavailable"), "model_unavailable"))

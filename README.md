@@ -579,3 +579,82 @@ The output below is real, copied from `results/capstone_before.md`. Each log lin
 *Criterion 5, run 1.* Uses the five lines pasted under criterion 1. `prompt_tokens` plus `output_tokens` was 478, 507, 481, 495 and 528, all 600 or less, and `model_calls` was 2 every time.
 
 What the numbers show so far (the diagnosis comes later): the slow runs were not tied to one query, because `denim jacket under $50` took 2.57 s in run 1 and 6.89 s in run 2. Their token counts were normal. The two servers that handle the timed requests (A and C in `run_capstone.py`) hit no rate-limit pause in any run. Run 3 also had one run of 19.46 s (`silk slip dress in midi length under $40`). The first request each server answered (the warm-up) took 5.0 to 6.3 s every time, against about 3 s for the warm ones.
+
+
+**Verdicts and Diagnoses**
+
+Verdicts are against the targets in `criteria.md`, from the before runs in **Run Log Before**. A criterion is MET only if all three runs reach its target.
+
+- **1. A matching query completes (at least 4 of 5): MET.** 5/5, 5/5, 5/5.
+- **2. An impossible query stops before any model call (5 of 5): MET.** 5/5 in every run, and `model_calls` was 0 every time.
+- **3. Every kind of request leaves one complete log line (5 of 5): MET.** 5/5 in every run, with all four outcomes covered.
+- **4. A warm matching request takes 5.0 s or less (at least 4 of 5): MISSED.** 5/5, 3/5, 4/5. The target is at least 4 of 5 in every run, and run 2 had only 3.
+- **5. One matching run uses 600 tokens or fewer (5 of 5): MET.** 5/5 in every run. The highest was 528 tokens.
+
+*Diagnosis for criterion 4.* The log only has the total time per run, so I could not tell which stage was slow. I wrote `diagnose_latency.py`, which times the three stages of a run separately (the MCP search, the model call in `suggest_outfit`, and the model call in `create_fit_card`) over 30 runs with the cache off, spaced out so no stage includes a rate-limit wait. The full table is in `results/latency_diagnosis_before.md`. A normal run took a median of 3.15 s: search 1.39 s, outfit 0.76 s, card 0.73 s. Six of the 30 runs were over 5.0 s, and they had two different causes:
+
+- **Four of the six were one model call that took 8.2 to 9.4 s** (a normal call is about 0.7 s). It was `suggest_outfit` three times and `create_fit_card` once, on three different queries (the denim jacket query twice). The stage is the model call in `generate.py`. The mechanism is that nothing limits how long one call may take, so when the service stalls, I wait the whole stall and it goes straight into the run time. One stalled call is enough to put a run over 5 s, because a normal run already takes about 3 s. The stalls were all close to 9 s, which looks like a fixed delay on the service side rather than a slow query. I did not find out why it happens.
+- **Two of the six were the MCP search taking 4.4 s and 5.0 s** (normal is about 1.4 s). One of those was the very first run after starting. I did not find the cause, and I did not fix it.
+
+The pattern is one problem with two symptoms: any single stage can run long, and a long stage is not cut off. The model call is the bigger part (4 of 6). It also explains why the criterion was easy to miss. About 4 in 60 model calls stalled, so a run of five requests has a real chance of two slow ones, and the target allows only one.
+
+The other four criteria were all met, so there is nothing to diagnose for them. I think two of my targets were set loosely. Criterion 1 reached 5 of 5 in all six runs I did (three before, three after), so I would tighten it from 4 of 5 to 5 of 5. Criterion 5's 600 tokens is about 11% above the highest of the six runs (539 tokens), which seems about right, though I would try 560.
+
+**The Improvement**
+
+One change, aimed at the model-call stalls: a timeout on each model call, with one retry. In `generate.py`, each call now runs in a worker thread (`_call_with_timeout`), and `generate()` stops waiting after `MODEL_TIMEOUT_S` and sends the request again. If the retry also times out, it raises `ModelUnavailable` with a message instead of hanging. The settings are in `config.py`: `MODEL_TIMEOUT_S = 2.0` and `MODEL_TIMEOUT_RETRIES = 1`. I chose 2 s because a normal call takes about 0.7 s (the slowest normal one was 2.7 s, apart from a cold first call at 3.2 s) and the stalls are 8 to 9 s. A stalled call cut off at 2 s plus a retry at about 0.7 s leaves a run near 5 s. A 3 s timeout would still leave it at about 5.8 s.
+
+This change crosses a line I drew in **Out of Scope**, where I said I would not add timeouts or retries. I made it because the diagnosis pointed straight at it. It is the only change to the agent's behavior in the capstone.
+
+I got it wrong twice before it worked, and I only found out by testing the change on its own before running the real trials:
+
+- My first version used the library's own `HttpOptions(timeout=...)`. The service rejected every call with a 400: "Manually set deadline 2s is too short. Minimum allowed deadline is 10s." That setting is also sent to the service as a deadline, so it would have broken the whole system.
+- My second version set the timeout on the HTTP connection. A forced 0.001 s timeout still succeeded, so the library was ignoring it.
+- The third version, the thread, passed both checks: normal calls work, and a forced timeout retries once and then raises a clear error.
+
+**Run Log After**
+
+I made no other change, and I ran the full test again the same way (`python run_capstone.py --label after --runs 3`). The full output is in `results/capstone_after.md`. Before and after, side by side:
+
+| Criterion | Target | Before: Run 1 / 2 / 3 | Before verdict | After: Run 1 / 2 / 3 | After verdict |
+|---|---|---|---|---|---|
+| 1. A matching query completes | at least 4 of 5 | 5/5, 5/5, 5/5 | MET | 5/5, 5/5, 5/5 | MET |
+| 2. An impossible query stops before any model call | 5 of 5 | 5/5, 5/5, 5/5 | MET | 5/5, 5/5, 5/5 | MET |
+| 3. Every kind of request leaves one complete log line | 5 of 5 | 5/5, 5/5, 5/5 | MET | 5/5, 5/5, 5/5 | MET |
+| 4. A warm matching request takes 5.0 s or less | at least 4 of 5 | 5/5, 3/5, 4/5 | MISSED | 5/5, 5/5, 5/5 | MET |
+| 5. One matching run uses 600 tokens or fewer | 5 of 5 | 5/5, 5/5, 5/5 | MET | 5/5, 5/5, 5/5 | MET |
+
+Criterion 4 after, run 2 (the same run number that had 3 of 5 before). `latency_s` was 2.44, 2.65, 2.60, 2.68 and 2.35. These log lines come from `runlog.py::run_logged`, sent by `run_capstone.py::one_run`:
+
+```json
+{"timestamp": "2026-11-12T02:51:09+00:00", "query": "vintage graphic tee under $30", "outcome": "ok", "output": "Live, laugh, love a butterfly baby tee. Grabbed this exact Y2K dream off Depop for just $18 and I’m already living out my ultimate early 2000s pop star fantasy. Pair it with baggy dark wash jeans and chunky sneakers for the absolute best high-contrast fit.", "selected_item_id": "lst_002", "latency_s": 2.44, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 371, "output_tokens": 119}
+{"timestamp": "2026-11-12T02:51:12+00:00", "query": "90s track jacket in size M", "outcome": "ok", "output": "Literal heart eyes for this 90s navy and white track jacket. Styled it over a ribbed tank and baggy denim for the ultimate sporty streetwear look, but it works just as well with chunky boots. Grabbed it on Poshmark for $45 and I'm never taking it off.", "selected_item_id": "lst_004", "latency_s": 2.65, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 388, "output_tokens": 130}
+{"timestamp": "2026-11-12T02:51:14+00:00", "query": "denim jacket under $50", "outcome": "ok", "output": "Scored this vintage cropped denim jacket on Poshmark for $42 and I'm obsessed with the wash. Threw it on with wide-leg khakis and a white tank for that effortless streetwear look. Honestly, it's about to be my daily uniform.", "selected_item_id": "lst_007", "latency_s": 2.6, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 354, "output_tokens": 99}
+{"timestamp": "2026-11-12T02:51:17+00:00", "query": "platform sneakers size 8", "outcome": "ok", "output": "Scored these chunky white platforms on Poshmark for $48 and I am officially in my Bratz doll era. They are giving heavy Y2K streetwear energy, especially paired with baggy dark wash denim and a vintage jacket. Can't wait to run these into the ground. 👟✨", "selected_item_id": "lst_019", "latency_s": 2.68, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 374, "output_tokens": 123}
+{"timestamp": "2026-11-12T02:51:19+00:00", "query": "silk slip dress in midi length under $40", "outcome": "ok", "output": "Found my dream 90s floral midi slip dress and honestly I'm never taking it off. Grabbed it on Depop for just $30 and the grunge styling potential is endless. I'm obsessed with throwing an oversized grey crewneck and combat boots right over it for that ultimate 90s contrast.", "selected_item_id": "lst_013", "latency_s": 2.35, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 378, "output_tokens": 117}
+```
+
+The stage timing, before and after (`results/latency_diagnosis_before.md` and `results/latency_diagnosis_after.md`, 30 runs each):
+
+| | Before | After |
+|---|---|---|
+| Median total per run | 3.15 s | 2.27 s |
+| Median search / outfit / card | 1.39 / 0.76 / 0.73 s | 0.84 / 0.65 / 0.67 s |
+| Slowest single model call | 9.44 s | 2.18 s |
+| Runs over 5.0 s | 6 of 30 | 1 of 30 (the first run after starting) |
+
+To show that the timeout works when a stall does happen, I wrote `check_timeout.py`. It makes the first model call hang for 9 s, then runs the same request with the timeout and with the timeout effectively off (30 s). Real output:
+
+```
+with the timeout       timeout    2s  took  2.40s  model calls 2  answer: 'Hello, how are you today?'
+without the timeout    timeout   30s  took 10.21s  model calls 1  answer: 'Hello, how are you today?'
+```
+
+*Did it help?* Criterion 4 went from MISSED to MET, but I cannot say my change caused that. The timeout never fired during the after runs: the servers printed no `[timeout]` lines, and every run in the log has `model_calls` of 2. In 30 stage-timed runs, no model call took longer than 2.18 s. The stalls simply did not happen this time, and the service seems to have been calmer. The MCP search also dropped from a 1.39 s median to 0.84 s, which my change cannot explain because it only touches model calls. So the after results are better, but conditions also changed. What I can show is the forced-stall check above, where the same stall costs 2.4 s with the change and 10.2 s without it. I have not yet seen it save a real stalled run.
+
+The change has costs I did not hide:
+
+- **A retry is a real extra request.** In the forced stall the request made 2 model calls instead of 1. A stalled run would show `model_calls` of 3, so criterion 5 as written (`model_calls` is 2) would fail on such a run. That did not happen in the after runs, but it would.
+- **The tokens for a timed-out call are not counted.** The call never returned a usage count, so the logged cost for a run with a retry is a little too low.
+- **The first request after the server starts can be cut off too.** A cold connection can take longer than 2 s, so that one is sometimes retried.
+- **It does nothing for the slow MCP search,** which was 2 of the 6 slow runs before.

@@ -19,6 +19,8 @@ What this does for you:
     silently draining your day's allowance. A runaway agent loop is the
     classic way to do that.
   • Retries when the service says you're going too fast.
+  • Capstone: cuts a call off after config.MODEL_TIMEOUT_S and tries again
+    (config.MODEL_TIMEOUT_RETRIES times) instead of waiting out a stalled call.
   • Returns a readable message when the model can't be reached, instead of a
     stack trace. Unit 4 Milestone 2 has you trigger exactly that on purpose.
   • Counts your calls and the tokens they used, so quota — and cost — are
@@ -27,6 +29,7 @@ What this does for you:
 The model name and the temperature live in config.py, not here.
 """
 
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -241,6 +244,31 @@ def _retry_delay(exc: Exception, attempt: int) -> float:
     return min(65.0, max(2.0 ** attempt, hinted))
 
 
+class _CallTimedOut(Exception):
+    """The model call ran longer than config.MODEL_TIMEOUT_S."""
+
+
+def _call_with_timeout(client, kwargs):
+    """
+    Run one model call, but stop waiting after config.MODEL_TIMEOUT_S.
+
+    The call runs in a worker thread and this function waits for it. If it is
+    still running when the time is up, the thread is left to finish by itself and
+    its answer is thrown away. I did not use the library's own timeout setting:
+    HttpOptions(timeout=...) is also sent to the service as a deadline, which the
+    service rejects (400) for anything under 10 s, and the connection-level
+    timeout in client_args is overridden by the library on each request.
+    """
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(client.models.generate_content, **kwargs)
+    try:
+        return future.result(timeout=config.MODEL_TIMEOUT_S)
+    except concurrent.futures.TimeoutError as exc:
+        raise _CallTimedOut() from exc
+    finally:
+        pool.shutdown(wait=False)
+
+
 def _get_client():
     global _client
     if _client is None:
@@ -296,6 +324,7 @@ def generate(
     _check_budget()
 
     last_error: Exception | None = None
+    timeouts = 0
     for attempt in range(config.MAX_RETRIES):
         _wait_for_slot()
         try:
@@ -312,7 +341,7 @@ def generate(
                 "config": call_config,
             }
 
-            response = client.models.generate_content(**kwargs)
+            response = _call_with_timeout(client, kwargs)
             _record_tokens(response)
             text = (response.text or "").strip()
 
@@ -322,6 +351,20 @@ def generate(
 
         except Exception as exc:  # noqa: BLE001 — surfaced below
             last_error = exc
+            if isinstance(exc, _CallTimedOut):
+                timeouts += 1
+                if timeouts <= config.MODEL_TIMEOUT_RETRIES:
+                    print(
+                        f"  [timeout] model call took longer than "
+                        f"{config.MODEL_TIMEOUT_S:g}s. Trying again.",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    continue
+                raise ModelUnavailable(
+                    f"The model took longer than {config.MODEL_TIMEOUT_S:g}s on "
+                    f"{timeouts} tries in a row. Try again in a moment."
+                ) from exc
             message = str(exc).lower()
             rate_limited = (
                 "429" in message

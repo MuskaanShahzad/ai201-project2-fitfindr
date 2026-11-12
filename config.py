@@ -86,6 +86,15 @@ REQUESTS_PER_MINUTE = 15
 SESSION_REQUEST_BUDGET = 300
 MAX_RETRIES = 5
 
+# Capstone: how long one model call may take before it is cut off and sent
+# again. A normal call takes about 0.7 s; in 30 timed runs, 4 calls stalled for
+# 8 to 9 s (results/latency_diagnosis_before.md). 2 s is above every normal call
+# but one (2.7 s) and low enough that a stalled call plus its retry still lets a
+# run finish near 5 s. Each timeout retry is a real extra request, so it counts
+# in model_calls.
+MODEL_TIMEOUT_S = 2.0
+MODEL_TIMEOUT_RETRIES = 1
+
 CACHE_DIR = ROOT / ".cache"
 
 
