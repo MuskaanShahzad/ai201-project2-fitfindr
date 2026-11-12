@@ -443,9 +443,9 @@ Criteria 2 and 3 have nothing open — neither depends on the model, and both pa
 
 ## Capstone
 
-**The System**
+**What This Extends**
 
-FitFindr, the same repo and code from units 3 and 4.
+I'm extending FitFindr, the thrift-styling agent I built in units 3 and 4, in the same repository. What's new: `serve.py` now runs the agent as a server, `runlog.py` writes a structured log line for every request, `run_capstone.py` runs the whole test, and `generate.py` has a timeout with one retry on model calls. The tools, the prompts and the planning loop are unchanged.
 
 **The Shape**
 
@@ -462,6 +462,10 @@ Shape A (deploy and instrument) on Path B (local, with logs). Until now FitFindr
 
 One small logging wrapper around `run_agent`, one call to it in `serve.py`, a script that sends requests, and a new `RUNNING.md`. About an hour of building.
 
+
+**Running It**
+
+Path B: it runs on my machine from one command, `python serve.py`, and a committed log from real runs is in `logs/runs.jsonl`. The full steps are in [RUNNING.md](RUNNING.md). It needs Python 3.11, 3.12 or 3.13 (I tested on 3.12.6), the pinned packages in `requirements.txt`, a Gemini API key in `.env`, and internet access. There are no model files to download, because the model runs at Google.
 
 **Instrumentation**
 
@@ -532,7 +536,7 @@ Later runs gave the same number. Across all 60 successful runs in `logs/runs.jso
 
 One run is about $0.0004 (376 x $0.30 / 1,000,000 + 119 x $2.50 / 1,000,000). Two cautions: the price might count the model's hidden "thinking" tokens as output, and the counts I logged (`candidates_token_count`) may not include them, so the real bill could be somewhat higher. And the money is not the limit. On the free tier I used, the limit is 15 model requests a minute, which is about 7 runs a minute. So 500 runs need at least 500 / 7 = 71 minutes of spread-out use. `serve.py` also handles one request at a time at about 3.3 s each, so if all 100 people asked at once, the last would wait about 100 x 3.3 = 330 s, a little over 5 minutes.
 
-**Run Log Before**
+**Run Log and Verdicts**
 
 This is the test of the extension before any fix. I ran it with `python run_capstone.py --label before --runs 3`. One run is the whole test once: five trials for each criterion, scored exactly as `criteria.md` words them. I repeated the whole test three times with the cache off and nothing changed in between, waiting 60 seconds between runs. The script (`run_capstone.py`) starts `serve.py`, sends every request over HTTP, and reads the log line each request wrote. The full output is in `results/capstone_before.md`, and the log lines are in `logs/runs.jsonl`.
 
@@ -594,7 +598,7 @@ What the numbers show so far (the diagnosis comes later): the slow runs were not
 
 **Verdicts and Diagnoses**
 
-Verdicts are against the targets in `criteria.md`, from the before runs in **Run Log Before**. A criterion is MET only if all three runs reach its target.
+Verdicts are against the targets in `criteria.md`, from the before runs in **Run Log and Verdicts**. A criterion is MET only if all three runs reach its target.
 
 - **1. A matching query completes (at least 4 of 5): MET.** 5/5, 5/5, 5/5.
 - **2. An impossible query stops before any model call (5 of 5): MET.** 5/5 in every run, and `model_calls` was 0 every time.
