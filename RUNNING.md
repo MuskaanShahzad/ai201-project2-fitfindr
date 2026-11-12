@@ -1,5 +1,73 @@
 # Running FitFindr
 
+## Capstone run path (Path B: local, with logs)
+
+FitFindr runs as a small web server on your own machine. Each request goes
+through the agent, and the server writes one line about it to `logs/runs.jsonl`.
+
+**The command that starts it**
+
+```
+python serve.py
+```
+
+It prints `FitFindr is listening on http://localhost:5000`. Leave that terminal
+open. The server answers one request at a time, on purpose.
+
+**Send it requests** (in a second terminal, same folder, venv active)
+
+```
+python drive.py
+```
+
+This sends 7 queries (6 that match listings, 1 that matches nothing) and prints
+one line per request. Use `python drive.py --rounds 2` to send the list twice.
+To send one request by hand, see the curl example under "Running it somewhere
+else" further down. Use single quotes around the JSON, or the `$30` is lost.
+
+**Read the log**
+
+```
+python runlog.py
+```
+
+prints a table of every request (time, outcome, seconds, tokens, query). The
+full records, with the output and the model call counts, are in
+`logs/runs.jsonl`, one JSON object per line.
+
+**Turn the cache off when you measure.** While building, the model's answers
+are cached, and a cached run uses 0 tokens and takes less time. For real
+numbers, start the server with the cache off:
+
+- PowerShell: `$env:AI201_CACHE='0'; python serve.py`
+- macOS / Linux: `AI201_CACHE=0 python serve.py`
+
+**What the environment needs**
+
+- Python 3.11, 3.12 or 3.13. Not 3.14. Tested from a fresh clone on 3.12.6 (Windows, 2026-11-11): `test.py` passed and `drive.py` wrote 7 log lines.
+- The packages in `requirements.txt`, which are pinned: `pip install -r requirements.txt`
+- A Gemini API key in a `.env` file. Copy `.env.example` to `.env` and paste the key in.
+- No model files. The model runs at Google, so nothing large is downloaded.
+- Internet access, because each run makes two model calls.
+
+**Set up from a fresh clone**
+
+```
+git clone https://github.com/MuskaanShahzad/ai201-project2-fitfindr
+cd ai201-project2-fitfindr
+python -m venv .venv
+.venv\Scripts\Activate.ps1          (macOS / Linux: source .venv/bin/activate)
+pip install -r requirements.txt
+copy .env.example .env               (macOS / Linux: cp .env.example .env, then add your key)
+python test.py                       (all checks should pass)
+python serve.py
+```
+
+The rest of this file is the original guide for the project: the tools, the
+command line, and what the error messages mean.
+
+---
+
 Everything about how the starter works and how to use it.
 
 ---
