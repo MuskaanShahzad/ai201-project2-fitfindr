@@ -30,7 +30,7 @@ can use.
 Logging: every request that reaches the agent is run through `run_logged()`
 in runlog.py, which appends one JSON line to logs/runs.jsonl (query, outcome,
 output, time taken, model calls, tokens). A request rejected with a 400 never
-reaches the agent, so it is not logged.
+reaches the agent, but it is logged too, with outcome "rejected".
 """
 
 import os
@@ -43,7 +43,7 @@ import config  # noqa: F401
 
 from flask import Flask, jsonify, request
 
-from runlog import run_logged
+from runlog import log_rejected, run_logged
 from utils.data_loader import get_example_wardrobe
 
 app = Flask(__name__)
@@ -111,8 +111,10 @@ def ask():
     query = (payload.get("query") or "").strip()
     if not query:
         # 400 rather than a stack trace: the caller can act on this one.
-        return jsonify({"error": "Send JSON with a 'query' field, e.g. "
-                                 '{"query": "vintage graphic tee under $30"}'}), 400
+        message = ("Send JSON with a 'query' field, e.g. "
+                   '{"query": "vintage graphic tee under $30"}')
+        log_rejected(query, message)
+        return jsonify({"error": message}), 400
 
     wardrobe = payload.get("wardrobe")
     if not isinstance(wardrobe, dict):

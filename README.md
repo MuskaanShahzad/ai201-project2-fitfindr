@@ -461,3 +461,61 @@ Shape A (deploy and instrument) on Path B (local, with logs). Until now FitFindr
 **Size Check**
 
 One small logging wrapper around `run_agent`, one call to it in `serve.py`, a script that sends requests, and a new `RUNNING.md`. About an hour of building.
+
+
+**Instrumentation**
+
+Every request that reaches `serve.py` writes one line to `logs/runs.jsonl`. The code is `runlog.py` (`run_logged` wraps `run_agent`; `serve.py` calls it). Each line is a JSON object with these fields:
+
+- `timestamp`: when the request finished (UTC)
+- `query`: what the user typed
+- `outcome`: `ok`, `no_results`, `model_unavailable`, `exception`, or `rejected`
+- `output`: the fit card if it worked, otherwise the error message
+- `selected_item_id`: the listing the agent picked (null if none)
+- `latency_s`: seconds from the start of the run to the end, measured inside the server
+- `model_calls`, `cache_hits`: how many model requests the run sent, and how many answers came from the cache
+- `prompt_tokens`, `output_tokens`: token counts reported by the model service
+
+`python runlog.py` prints the whole log as a short table. The full file is committed (22 lines). Failures are logged too: `no_results` (nothing matched), `model_unavailable` (the model could not be reached), `exception` (anything else that crashed the run), and `rejected` (a request with no query, which gets a 400 and never reaches the agent).
+
+How the session was produced: the server was started with the cache off (`$env:AI201_CACHE='0'; python serve.py`). I ran `python drive.py` twice, 60 seconds apart so the rate limiter would not add waiting time. I then sent one empty query. Last, I restarted the server with a wrong API key (`GEMINI_API_KEY=not-a-real-key`) and ran `drive.py` once more.
+
+Ten entries from the session (the first ten lines of the log). Nine are `ok`. The seventh (the ballgown query) is `no_results`: an impossible query that stopped before any model call, so it shows 0 tokens:
+
+```json
+{"timestamp": "2026-11-12T01:26:22+00:00", "query": "vintage graphic tee under $30", "outcome": "ok", "output": "Found the ultimate Y2K butterfly baby tee and I’m literally obsessed. Manifesting warm weather vibes with this one, grabbed it on Depop for just $18. Pair it with baggy denim and chunky sneakers for that effortless fitted-meets-baggy look.", "selected_item_id": "lst_002", "latency_s": 5.49, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 365, "output_tokens": 103}
+{"timestamp": "2026-11-12T01:26:27+00:00", "query": "90s track jacket in size M", "outcome": "ok", "output": "Found this absolute holy grail 90s navy and white striped track jacket and I am officially obsessed. Scored it on Poshmark for just $45 and the sporty streetwear vibes are immaculate. Honestly can't wait to style it with baggy denim and chunky sneakers all fall long. ✨", "selected_item_id": "lst_004", "latency_s": 2.53, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 389, "output_tokens": 130}
+{"timestamp": "2026-11-12T01:26:32+00:00", "query": "silk slip dress in midi length under $40", "outcome": "ok", "output": "Found the ultimate 90s dream dress and honestly, I’m never taking it off. Grabbed this floral midi on Depop for $30 and I’m obsessed with the grunge-meets-femme vibe. Layer it over a baby tee with chunky sneakers, or throw an oversized crewneck right on top for chilly days. 🥀✨", "selected_item_id": "lst_013", "latency_s": 3.13, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 380, "output_tokens": 127}
+{"timestamp": "2026-11-12T01:26:41+00:00", "query": "platform sneakers size 8", "outcome": "ok", "output": "Found my new daily uniform on Poshmark for $48. Absolutely obsessed with the chunky Y2K streetwear vibe of these platforms. Can’t wait to live in these all fall.", "selected_item_id": "lst_019", "latency_s": 6.35, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 372, "output_tokens": 99}
+{"timestamp": "2026-11-12T01:26:45+00:00", "query": "denim jacket under $50", "outcome": "ok", "output": "Obsessed with this light-wash cropped denim jacket for nailing that effortless double-denim look. Snagged it on Poshmark for $42 and the fit is honestly just too good. Perfect for throwing over a hoodie or a basic tank when you want that 90s streetwear vibe.", "selected_item_id": "lst_007", "latency_s": 2.34, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 374, "output_tokens": 125}
+{"timestamp": "2026-11-12T01:26:50+00:00", "query": "cargo pants under $30", "outcome": "ok", "output": "Finally found the ultimate 2000s off-duty model cargos. Scored them on Poshmark for just $27 and I am so obsessed with this utility vibe. Gonna style them with a baby tee and combat boots for that effortless Y2K street style.", "selected_item_id": "lst_011", "latency_s": 2.69, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 364, "output_tokens": 103}
+{"timestamp": "2026-11-12T01:26:53+00:00", "query": "designer ballgown size XXS under $5", "outcome": "no_results", "output": "No listings matched. Try raising the price ceiling, dropping the size filter, or using different keywords.", "selected_item_id": null, "latency_s": 1.4, "model_calls": 0, "cache_hits": 0, "prompt_tokens": 0, "output_tokens": 0}
+{"timestamp": "2026-11-12T01:28:00+00:00", "query": "vintage graphic tee under $30", "outcome": "ok", "output": "Living out my inner 2000s pop star dreams in this little butterfly tee. ✨ Only $18 over on my Depop if you want to channel major Y2K mall rat energy. I’m obsessed with how it looks paired with baggy jeans and chunky sneakers.", "selected_item_id": "lst_002", "latency_s": 3.03, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 383, "output_tokens": 124}
+{"timestamp": "2026-11-12T01:28:06+00:00", "query": "90s track jacket in size M", "outcome": "ok", "output": "Found my new everyday throw-on jacket and I am obsessed with this sporty 90s streetwear vibe. Scored it on Poshmark for $45 and honestly haven't stopped wearing it since. Throwing it over a baby tee with some baggy jeans is about to be my whole personality.", "selected_item_id": "lst_004", "latency_s": 2.98, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 386, "output_tokens": 129}
+{"timestamp": "2026-11-12T01:28:11+00:00", "query": "silk slip dress in midi length under $40", "outcome": "ok", "output": "Found my new uniform for the next three months. Got this 90s floral silk midi on Depop for just $30 and honestly, I’m never taking it off. It’s giving grungy-romance if you throw it on with chunky boots and a beat-up denim jacket, or total cozy lazy-day energy with an oversized crewneck. 🥀✨", "selected_item_id": "lst_013", "latency_s": 3.11, "model_calls": 2, "cache_hits": 0, "prompt_tokens": 380, "output_tokens": 131}
+```
+
+Two failed runs from the same log, the empty query and one run with the wrong key:
+
+```json
+{"timestamp": "2026-11-12T01:28:28+00:00", "query": "", "outcome": "rejected", "output": "Send JSON with a 'query' field, e.g. {\"query\": \"vintage graphic tee under $30\"}", "selected_item_id": null, "latency_s": 0.0, "model_calls": 0, "cache_hits": 0, "prompt_tokens": 0, "output_tokens": 0}
+{"timestamp": "2026-11-12T01:28:46+00:00", "query": "vintage graphic tee under $30", "outcome": "model_unavailable", "output": "The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com.", "selected_item_id": "lst_002", "latency_s": 5.0, "model_calls": 1, "cache_hits": 0, "prompt_tokens": 0, "output_tokens": 0}
+```
+
+The wrong-key run is `model_unavailable` with 0 tokens: the search worked, the model call was refused, and the agent stopped with a message instead of crashing. The `exception` outcome did not come up in this session, so I have not seen it write a line.
+
+**What It Costs**
+
+I measured the cost of one matching run from the 12 `ok` runs in the log above. The model service reports the token counts for each call, and `runlog.py` adds up the two calls in a run (`suggest_outfit` and `create_fit_card`). The cache was off, so every number is a real model call. This is a measurement, not a number from the pricing page.
+
+| One matching run | Average | Lowest | Highest |
+|---|---|---|---|
+| Prompt tokens | 376 | 364 | 389 |
+| Output tokens | 118 | 99 | 131 |
+| Total tokens | 494 | 467 | 519 |
+| Seconds (`latency_s`) | 3.3 | 2.3 | 6.4 |
+| Model calls | 2 | 2 | 2 |
+
+So one run costs about **500 tokens and about 3 seconds**. The median time is 3.0 seconds; the one 6.4-second run is a single slow run and I did not look into why. A query that matches nothing costs 0 tokens and about 1.3 seconds, which is the time the MCP search takes on its own (it starts a separate Python process). I am on the free tier, so the money spent was $0, and I have not turned the tokens into dollars because I did not measure a price.
+
+One note on the clean-clone test: it passed the first time, so nothing was missing from `RUNNING.md`. The only fix was in my own first draft, where a curl example would have lost the `$30` in the query. I replaced it before committing.

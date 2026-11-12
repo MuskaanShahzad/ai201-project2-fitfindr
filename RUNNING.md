@@ -2,7 +2,7 @@
 
 ## Capstone run path (Path B: local, with logs)
 
-FitFindr runs as a small web server on your own machine. Each request goes
+FitFindr runs as a small web server on a local machine. Each request goes
 through the agent, and the server writes one line about it to `logs/runs.jsonl`.
 
 **The command that starts it**
@@ -35,7 +35,7 @@ prints a table of every request (time, outcome, seconds, tokens, query). The
 full records, with the output and the model call counts, are in
 `logs/runs.jsonl`, one JSON object per line.
 
-**Turn the cache off when you measure.** While building, the model's answers
+**Turn the cache off when measuring.** While building, the model's answers
 are cached, and a cached run uses 0 tokens and takes less time. For real
 numbers, start the server with the cache off:
 
@@ -58,7 +58,7 @@ cd ai201-project2-fitfindr
 python -m venv .venv
 .venv\Scripts\Activate.ps1          (macOS / Linux: source .venv/bin/activate)
 pip install -r requirements.txt
-copy .env.example .env               (macOS / Linux: cp .env.example .env, then add your key)
+copy .env.example .env               (macOS / Linux: cp .env.example .env, then add the API key)
 python test.py                       (all checks should pass)
 python serve.py
 ```

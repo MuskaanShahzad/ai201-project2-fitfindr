@@ -6,7 +6,7 @@ Send a set of queries to a running FitFindr server, so the log fills up.
 
 Each request goes over HTTP to POST /ask, the same way any other client would.
 The server writes the log (logs/runs.jsonl); this script only prints a short
-line per request so you can watch it.
+line per request so progress is visible.
 
 Options:
     python drive.py --port 5000     the port the server is on (default 5000)

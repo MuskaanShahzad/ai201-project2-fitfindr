@@ -9,7 +9,8 @@ so the call and token counts it reads from generate.py belong to this run.
 Fields in each line:
     timestamp        when the request finished (UTC, ISO format)
     query            what the user typed
-    outcome          ok | no_results | model_unavailable | exception
+    outcome          ok | no_results | model_unavailable | exception | rejected
+                     (rejected = the request had no query, so the agent never ran)
     output           the fit card if the run worked, otherwise the error text
     selected_item_id the listing the agent picked, or null
     latency_s        seconds from start to finish, including the MCP search
@@ -47,6 +48,22 @@ def _write(record: dict) -> None:
     LOG_PATH.parent.mkdir(exist_ok=True)
     with LOG_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def log_rejected(query: str, reason: str) -> None:
+    """Log a request that was turned away before the agent ran (a 400)."""
+    _write({
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "query": query,
+        "outcome": "rejected",
+        "output": reason,
+        "selected_item_id": None,
+        "latency_s": 0.0,
+        "model_calls": 0,
+        "cache_hits": 0,
+        "prompt_tokens": 0,
+        "output_tokens": 0,
+    })
 
 
 def run_logged(query: str, wardrobe: dict) -> dict:
